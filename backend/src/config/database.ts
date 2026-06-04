@@ -7,6 +7,7 @@ const MONGODB_OPTIONS: mongoose.ConnectOptions = {
   socketTimeoutMS: 45000,
   maxPoolSize: 10,
   minPoolSize: 2,
+  dbName: env.MONGODB_DB,
 };
 
 export async function connectDatabase(): Promise<void> {
