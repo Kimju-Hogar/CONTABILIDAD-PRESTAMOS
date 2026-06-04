@@ -93,7 +93,6 @@ const UsuarioSchema = new Schema<IUsuario>(
 );
 
 // Índices
-UsuarioSchema.index({ email: 1 }, { unique: true });
 UsuarioSchema.index({ deletedAt: 1 });
 
 // Soft delete — excluir eliminados por defecto
