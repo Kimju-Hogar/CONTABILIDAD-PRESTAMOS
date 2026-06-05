@@ -15,8 +15,13 @@ import {
 const TIMEZONE = 'America/Bogota';
 
 // ─── Cálculo financiero central ──────────────────────────────
-export function calcularPrestamo(capital: number, modalidad: 'diaria' | 'semanal', fechaInicio: Date) {
-  const numeroCuotas = modalidad === 'diaria' ? CUOTAS_DIARIAS : CUOTAS_SEMANALES;
+export function calcularPrestamo(
+  capital: number,
+  modalidad: 'diaria' | 'semanal',
+  fechaInicio: Date,
+  plazoPersonalizado?: number
+) {
+  const numeroCuotas = plazoPersonalizado ?? (modalidad === 'diaria' ? CUOTAS_DIARIAS : CUOTAS_SEMANALES);
   const totalInteres = Math.round(capital * INTERES_FIJO / 100);
   const totalPagar = capital + totalInteres;
   const cuotaBase = totalPagar / numeroCuotas;
@@ -103,7 +108,7 @@ export class PrestamosService {
     }
 
     const fechaInicio = toZonedTime(dto.fechaInicio, TIMEZONE);
-    const calc = calcularPrestamo(dto.capital, dto.modalidad, fechaInicio);
+    const calc = calcularPrestamo(dto.capital, dto.modalidad, fechaInicio, dto.numeroCuotas);
     const cuotas = generarCuotas(fechaInicio, calc.numeroCuotas, calc.cuotaMonto, dto.modalidad);
 
     const prestamo = await PrestamoModel.create({

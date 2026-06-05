@@ -13,8 +13,11 @@ const schema = z.object({
   clienteId: z.string().min(1, 'Selecciona un cliente'),
   capital: z.string().min(1, 'El capital es requerido')
     .transform(Number)
-    .pipe(z.number().min(100_000, 'Mínimo $100.000')),
+    .pipe(z.number().min(10_000, 'Mínimo $10.000')),
   modalidad: z.enum(['diaria', 'semanal'], { required_error: 'Selecciona una modalidad' }),
+  numeroCuotas: z.string().min(1, 'El plazo es requerido')
+    .transform(Number)
+    .pipe(z.number().int().positive('Debe ser mayor a 0')),
   fechaInicio: z.string().min(1, 'La fecha de inicio es requerida'),
   observaciones: z.string().max(1000).optional(),
 });
@@ -28,10 +31,11 @@ export default function NuevoPrestamoPage() {
   const [preview, setPreview] = useState<ReturnType<typeof calcularPrestamo> | null>(null);
   const [capitalVal, setCapitalVal] = useState('');
   const [modalidadVal, setModalidadVal] = useState<'diaria' | 'semanal'>('diaria');
+  const [plazoVal, setPlazoVal] = useState('115');
 
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { fechaInicio: fechaHoyISO(), modalidad: 'diaria' },
+    defaultValues: { fechaInicio: fechaHoyISO(), modalidad: 'diaria', numeroCuotas: '115' as unknown as number },
   });
 
   // Buscar clientes para el selector
@@ -40,10 +44,11 @@ export default function NuevoPrestamoPage() {
     queryFn: () => apiClient.get('/api/clientes?estado=activo&limit=100').then((r) => r.data.data),
   });
 
-  const actualizarPreview = (capital: string, modalidad: 'diaria' | 'semanal') => {
+  const actualizarPreview = (capital: string, modalidad: 'diaria' | 'semanal', plazo: string) => {
     const num = Number(capital.replace(/\D/g, ''));
-    if (num >= 100_000) {
-      setPreview(calcularPrestamo(num, modalidad));
+    const pNum = Number(plazo);
+    if (num >= 10_000 && pNum > 0) {
+      setPreview(calcularPrestamo(num, modalidad, pNum));
     } else {
       setPreview(null);
     }
@@ -53,6 +58,7 @@ export default function NuevoPrestamoPage() {
     mutationFn: (data: FormData) => apiClient.post('/api/prestamos', {
       ...data,
       capital: typeof data.capital === 'string' ? Number((data.capital as string).replace(/\D/g, '')) : data.capital,
+      numeroCuotas: typeof data.numeroCuotas === 'string' ? Number(data.numeroCuotas) : data.numeroCuotas,
     }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['prestamos'] });
@@ -113,7 +119,7 @@ export default function NuevoPrestamoPage() {
                 const raw = e.target.value.replace(/\D/g, '');
                 setCapitalVal(raw ? `$ ${Number(raw).toLocaleString('es-CO')}` : '');
                 setValue('capital', raw as unknown as number);
-                actualizarPreview(raw, modalidadVal);
+                actualizarPreview(raw, modalidadVal, plazoVal);
               }}
             />
             {errors.capital && <p className="input-error">{errors.capital.message as string}</p>}
@@ -142,19 +148,37 @@ export default function NuevoPrestamoPage() {
                     onChange={() => {
                       setModalidadVal(m);
                       setValue('modalidad', m);
-                      actualizarPreview(capitalVal.replace(/\D/g, ''), m);
+                      const defPlazo = m === 'diaria' ? '115' : '4';
+                      setPlazoVal(defPlazo);
+                      setValue('numeroCuotas', defPlazo as unknown as number);
+                      actualizarPreview(capitalVal.replace(/\D/g, ''), m, defPlazo);
                     }}
                   />
                   <span style={{ fontSize: 15, fontWeight: 700, color: modalidadVal === m ? 'var(--brand-600)' : 'var(--text-primary)' }}>
-                    {m === 'diaria' ? '115 días' : '4 semanas'}
-                  </span>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
                     {m === 'diaria' ? 'Diaria' : 'Semanal'}
                   </span>
                 </label>
               ))}
             </div>
             {errors.modalidad && <p className="input-error">{errors.modalidad.message}</p>}
+          </div>
+
+          {/* Plazo (Días o Semanas) */}
+          <div>
+            <label className="input-label">Plazo ({modalidadVal === 'diaria' ? 'Días' : 'Semanas'}) *</label>
+            <input
+              type="number"
+              className="input-field"
+              placeholder="Ej. 20"
+              value={plazoVal}
+              onChange={(e) => {
+                const raw = e.target.value.replace(/\D/g, '');
+                setPlazoVal(raw);
+                setValue('numeroCuotas', raw as unknown as number);
+                actualizarPreview(capitalVal.replace(/\D/g, ''), modalidadVal, raw);
+              }}
+            />
+            {errors.numeroCuotas && <p className="input-error">{errors.numeroCuotas.message}</p>}
           </div>
 
           {/* Fecha inicio */}

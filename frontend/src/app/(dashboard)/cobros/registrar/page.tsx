@@ -263,12 +263,16 @@ export default function RegistrarCobroPage() {
           <MapPin size={20} color={geolocalizacion ? 'var(--success-500)' : 'var(--text-muted)'} />
           <div style={{ flex: 1 }}>
             <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>
-              {geolocalizacion ? 'Ubicación capturada' : geoError || 'Obteniendo ubicación...'}
+              {geolocalizacion ? 'Ubicación capturada' : 'Ubicación no compartida (opcional)'}
             </p>
-            {geolocalizacion && (
+            {geolocalizacion ? (
               <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
                 {geolocalizacion.lat.toFixed(5)}, {geolocalizacion.lng.toFixed(5)}
                 {geolocalizacion.precision && ` ±${Math.round(geolocalizacion.precision)}m`}
+              </p>
+            ) : (
+              <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+                {geoError ? 'Permiso denegado o GPS apagado' : 'Buscando señal GPS...'}
               </p>
             )}
           </div>

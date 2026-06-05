@@ -6,11 +6,12 @@ export const CUOTAS_SEMANALES = 4;
 export const PAPELERIA_POR_CIEN_MIL = 5_000;
 
 export function calcularPapeleria(capital: number): number {
-  return Math.floor(capital / 100_000) * PAPELERIA_POR_CIEN_MIL;
+  const calculada = Math.floor(capital / 100_000) * PAPELERIA_POR_CIEN_MIL;
+  return Math.max(5000, calculada);
 }
 
-export function calcularPrestamo(capital: number, modalidad: 'diaria' | 'semanal') {
-  const numeroCuotas = modalidad === 'diaria' ? CUOTAS_DIARIAS : CUOTAS_SEMANALES;
+export function calcularPrestamo(capital: number, modalidad: 'diaria' | 'semanal', plazoPersonalizado?: number) {
+  const numeroCuotas = plazoPersonalizado ?? (modalidad === 'diaria' ? CUOTAS_DIARIAS : CUOTAS_SEMANALES);
   const totalInteres = Math.round(capital * INTERES_FIJO / 100);
   const totalPagar = capital + totalInteres;
   const cuotaBase = totalPagar / numeroCuotas;
