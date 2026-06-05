@@ -39,9 +39,10 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'gotagota-auth',
       storage: createJSONStorage(() => localStorage),
-      // Solo persistir el refresh token — el access se renueva solo
+      // Persistir toda la sesión para evitar llamadas de refresh en cada recarga
       partialize: (state) => ({
         usuario: state.usuario,
+        accessToken: state.accessToken,
         refreshToken: state.refreshToken,
         isAuthenticated: state.isAuthenticated,
       }),
