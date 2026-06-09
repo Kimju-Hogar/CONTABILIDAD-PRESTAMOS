@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
-import { addDays } from 'date-fns';
+import { addDays, addMinutes, addHours } from 'date-fns';
 import { env } from '../../config/env';
 import { UsuarioModel, IUsuario } from '../../models/Usuario.model';
 import { AuditLogModel } from '../../models/AuditLog.model';
@@ -59,8 +59,8 @@ export class AuthService {
     // Generar tokens
     const tokens = this.generateTokens(usuario._id.toString(), usuario.email, usuario.rol, sessionId);
 
-    // Parsear expiración del refresh token
-    const expiraEn = addDays(new Date(), 30);
+    // Parsear expiración del refresh token desde la variable de entorno
+    const expiraEn = this.parseExpiry(env.JWT_REFRESH_EXPIRES);
 
     // Guardar sesión en el usuario (máximo 5 sesiones activas)
     await UsuarioModel.findByIdAndUpdate(usuario._id, {
@@ -136,7 +136,7 @@ export class AuthService {
           deviceInfo: sesion.deviceInfo,
           ip: sesion.ip,
           creadoEn: new Date(),
-          expiraEn: addDays(new Date(), 30),
+          expiraEn: this.parseExpiry(env.JWT_REFRESH_EXPIRES),
           activa: true,
         },
       },
@@ -214,6 +214,20 @@ export class AuthService {
     });
 
     return { accessToken, refreshToken };
+  }
+  // ─── Calcular fecha de expiración desde string tipo '7d', '15m', '2h' ─
+  private parseExpiry(expiry: string): Date {
+    const now = new Date();
+    const match = /^(\d+)([smhd])$/.exec(expiry);
+    if (!match) return addDays(now, 90); // fallback seguro
+    const value = parseInt(match[1], 10);
+    const unit = match[2];
+    switch (unit) {
+      case 'm': return addMinutes(now, value);
+      case 'h': return addHours(now, value);
+      case 'd': return addDays(now, value);
+      default:  return addDays(now, 90);
+    }
   }
 }
 
