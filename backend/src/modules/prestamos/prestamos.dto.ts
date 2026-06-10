@@ -1,10 +1,22 @@
 import { z } from 'zod';
 
 // ─── Constantes de negocio ────────────────────────────────────
-export const INTERES_FIJO = 20;           // 20% fijo
-export const CUOTAS_DIARIAS = 115;        // modalidad diaria
-export const CUOTAS_SEMANALES = 4;        // modalidad semanal (1 mes)
+export const INTERES_FIJO = 20;             // 20% por defecto
+export const CUOTAS_DIARIAS = 115;          // modalidad diaria
+export const CUOTAS_SEMANALES = 4;          // modalidad semanal (1 mes)
+export const CUOTAS_QUINCENALES = 2;        // modalidad quincenal (1 mes = 2 quincenas)
+export const CUOTAS_MENSUALES = 1;          // modalidad mensual (mínimo 1 mes)
 export const PAPELERIA_POR_CIEN_MIL = 5000; // $5.000 por cada $100.000
+
+export const MODALIDAD_VALUES = ['diaria', 'semanal', 'quincenal', 'mensual'] as const;
+export type Modalidad = typeof MODALIDAD_VALUES[number];
+
+export const DEFAULT_CUOTAS: Record<Modalidad, number> = {
+  diaria:    CUOTAS_DIARIAS,
+  semanal:   CUOTAS_SEMANALES,
+  quincenal: CUOTAS_QUINCENALES,
+  mensual:   CUOTAS_MENSUALES,
+};
 
 export function calcularPapeleria(capital: number): number {
   const calculada = Math.floor(capital / 100_000) * PAPELERIA_POR_CIEN_MIL;
@@ -17,9 +29,9 @@ export const CrearPrestamoDto = z.object({
   capital: z
     .number()
     .positive('El capital debe ser mayor a 0')
-    .min(10_000, 'El capital mínimo es $10.000'),
-  modalidad: z.enum(['diaria', 'semanal'], {
-    required_error: 'La modalidad es requerida (diaria o semanal)',
+    .min(5_000, 'El capital mínimo es $5.000'),
+  modalidad: z.enum(MODALIDAD_VALUES, {
+    required_error: 'La modalidad es requerida',
   }),
   interes: z
     .number()
@@ -41,7 +53,7 @@ export const CrearPrestamoDto = z.object({
 
 export const RefinanciarPrestamoDto = z.object({
   capitalAdicional: z.number().min(0).optional().default(0),
-  modalidad: z.enum(['diaria', 'semanal']),
+  modalidad: z.enum(MODALIDAD_VALUES),
   observaciones: z.string().max(1000).optional(),
 });
 
@@ -53,7 +65,7 @@ export const FiltrosPrestamoDto = z.object({
   clienteId: z.string().optional(),
   cobradorId: z.string().optional(),
   estado: z.enum(['activo', 'completado', 'cancelado', 'refinanciado']).optional(),
-  modalidad: z.enum(['diaria', 'semanal']).optional(),
+  modalidad: z.enum(MODALIDAD_VALUES).optional(),
   page: z.string().default('1').transform(Number),
   limit: z.string().default('20').transform(Number),
 });

@@ -1,9 +1,26 @@
-// ─── Constantes compartidas (Frontend) ───────────────────────
+// ─── Tipos y constantes ───────────────────────────────────────
+export type Modalidad = 'diaria' | 'semanal' | 'quincenal' | 'mensual';
 
 export const INTERES_FIJO = 20;
 export const CUOTAS_DIARIAS = 115;
 export const CUOTAS_SEMANALES = 4;
+export const CUOTAS_QUINCENALES = 2;
+export const CUOTAS_MENSUALES = 1;
 export const PAPELERIA_POR_CIEN_MIL = 5_000;
+
+export const DEFAULT_CUOTAS: Record<Modalidad, number> = {
+  diaria:    CUOTAS_DIARIAS,
+  semanal:   CUOTAS_SEMANALES,
+  quincenal: CUOTAS_QUINCENALES,
+  mensual:   CUOTAS_MENSUALES,
+};
+
+export const LABEL_CUOTA: Record<Modalidad, string> = {
+  diaria:    'cuotas diarias',
+  semanal:   'cuotas semanales',
+  quincenal: 'cuotas quincenales (c/15 días)',
+  mensual:   'cuotas mensuales',
+};
 
 export function calcularPapeleria(capital: number): number {
   const calculada = Math.floor(capital / 100_000) * PAPELERIA_POR_CIEN_MIL;
@@ -12,11 +29,11 @@ export function calcularPapeleria(capital: number): number {
 
 export function calcularPrestamo(
   capital: number,
-  modalidad: 'diaria' | 'semanal',
+  modalidad: Modalidad,
   plazoPersonalizado?: number,
   interes: number = INTERES_FIJO
 ) {
-  const numeroCuotas = plazoPersonalizado ?? (modalidad === 'diaria' ? CUOTAS_DIARIAS : CUOTAS_SEMANALES);
+  const numeroCuotas = plazoPersonalizado ?? DEFAULT_CUOTAS[modalidad];
   const totalInteres = Math.round(capital * interes / 100);
   const totalPagar = capital + totalInteres;
   const cuotaBase = totalPagar / numeroCuotas;
@@ -31,9 +48,7 @@ export function calcularPrestamo(
     cuotaMonto,
     papeleria,
     montoDesembolsado,
-    descripcion: modalidad === 'diaria'
-      ? `${numeroCuotas} cuotas diarias de ${formatCOP(cuotaMonto)}`
-      : `${numeroCuotas} cuotas semanales de ${formatCOP(cuotaMonto)}`,
+    descripcion: `${numeroCuotas} ${LABEL_CUOTA[modalidad]} de ${formatCOP(cuotaMonto)}`,
   };
 }
 

@@ -3,13 +3,20 @@ import { useState, use } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { CheckCircle2, Clock, AlertTriangle, XCircle, Loader2, Phone } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle, Loader2, Phone, X } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { formatCOP, formatFechaCO, formatFechaHoraCO, porcentajeProgreso } from '@/lib/utils';
 
 const CUOTA_COLORS: Record<string, string> = {
   pagada: 'var(--success-500)', vencida: 'var(--danger-500)',
   pendiente: 'var(--border)', parcial: 'var(--warning-500)',
+};
+
+const LABEL_MODALIDAD: Record<string, string> = {
+  diaria:    'cuota diaria',
+  semanal:   'cuota semanal',
+  quincenal: 'cuota quincenal',
+  mensual:   'cuota mensual',
 };
 
 export default function PrestamoDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -53,11 +60,13 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
   const prog = porcentajeProgreso(prestamo.totalCobrado, prestamo.totalPagar);
   const isActivo = prestamo.estado === 'activo';
   const cuotasVencidas = prestamo.cuotas?.filter((c: { estado: string }) => c.estado === 'vencida').length ?? 0;
-  const cuotasPagadas = prestamo.cuotas?.filter((c: { estado: string }) => c.estado === 'pagada').length ?? 0;
+  const cuotasPagadas  = prestamo.cuotas?.filter((c: { estado: string }) => c.estado === 'pagada').length  ?? 0;
+  const labelCuota     = LABEL_MODALIDAD[prestamo.modalidad] ?? 'cuota';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Header */}
+
+      {/* ── Header ── */}
       <div className="card" style={{
         background: isActivo
           ? 'linear-gradient(135deg, #4f46e5, #7c3aed)'
@@ -77,7 +86,6 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
           </span>
         </div>
 
-        {/* Info cliente */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{
             width: 40, height: 40, borderRadius: '50%',
@@ -101,7 +109,7 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
         </div>
       </div>
 
-      {/* Progreso */}
+      {/* ── Progreso ── */}
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
           <div>
@@ -111,7 +119,7 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
             </p>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>Saldo</p>
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>Saldo pendiente</p>
             <p style={{ margin: '4px 0 0', fontSize: 20, fontWeight: 800, color: 'var(--danger-500)' }}>
               {formatCOP(prestamo.saldoPendiente)}
             </p>
@@ -125,28 +133,28 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
         </p>
       </div>
 
-      {/* Detalles financieros */}
+      {/* ── Condiciones ── */}
       <div className="card">
-        <h2 style={{ margin: '0 0 14px', fontSize: 15, fontWeight: 700 }}>Condiciones</h2>
+        <h2 style={{ margin: '0 0 14px', fontSize: 15, fontWeight: 700 }}>Condiciones del préstamo</h2>
         {[
-          { label: `Interés (${prestamo.interes ?? 20}%)`, value: formatCOP(prestamo.totalInteres) },
-          { label: 'Papelería descontada', value: formatCOP(prestamo.papeleria ?? 0) },
-          { label: 'El cliente recibió', value: formatCOP(prestamo.montoDesembolsado ?? 0), highlight: true },
-          { label: 'Total a pagar', value: formatCOP(prestamo.totalPagar), highlight: true },
-          { label: prestamo.modalidad === 'diaria' ? 'Cuota diaria' : 'Cuota semanal', value: formatCOP(prestamo.cuotaDiaria) },
-          { label: 'Fecha inicio', value: formatFechaCO(prestamo.fechaInicio) },
-          { label: 'Fecha fin', value: formatFechaCO(prestamo.fechaFin) },
-          { label: 'Cobrador', value: prestamo.cobrador?.nombre ?? '' },
-        ].map(({ label, value, highlight }) => (
+          { label: `Interés (${prestamo.interes ?? 20}%)`,    value: formatCOP(prestamo.totalInteres) },
+          { label: 'Papelería descontada',                    value: formatCOP(prestamo.papeleria ?? 0) },
+          { label: 'El cliente recibió',                      value: formatCOP(prestamo.montoDesembolsado ?? 0), hi: true },
+          { label: 'Total a pagar',                           value: formatCOP(prestamo.totalPagar), hi: true },
+          { label: `${labelCuota.charAt(0).toUpperCase() + labelCuota.slice(1)}`, value: formatCOP(prestamo.cuotaDiaria) },
+          { label: 'Fecha inicio',                            value: formatFechaCO(prestamo.fechaInicio) },
+          { label: 'Fecha fin estimada',                      value: formatFechaCO(prestamo.fechaFin) },
+          { label: 'Cobrador',                                value: prestamo.cobrador?.nombre ?? '' },
+        ].map(({ label, value, hi }) => (
           <div key={label} style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             padding: '8px 0', borderBottom: '1px solid var(--border)',
           }}>
             <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>{label}</span>
             <span style={{
-              fontSize: highlight ? 15 : 14,
-              fontWeight: highlight ? 800 : 600,
-              color: highlight ? 'var(--brand-text)' : 'var(--text-primary)',
+              fontSize: hi ? 15 : 14,
+              fontWeight: hi ? 800 : 600,
+              color: hi ? 'var(--brand-text)' : 'var(--text-primary)',
             }}>{value}</span>
           </div>
         ))}
@@ -154,9 +162,9 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
         {/* Contadores de cuotas */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginTop: 14 }}>
           {[
-            { label: 'Pagadas', count: cuotasPagadas, color: 'var(--success-500)' },
-            { label: 'Vencidas', count: cuotasVencidas, color: 'var(--danger-500)' },
-            { label: 'Pendientes', count: (prestamo.numeroCuotas - cuotasPagadas - cuotasVencidas), color: 'var(--text-muted)' },
+            { label: 'Pagadas',   count: cuotasPagadas,  color: 'var(--success-500)' },
+            { label: 'Vencidas',  count: cuotasVencidas, color: 'var(--danger-500)' },
+            { label: 'Pendientes',count: (prestamo.numeroCuotas - cuotasPagadas - cuotasVencidas), color: 'var(--text-muted)' },
           ].map(({ label, count, color }) => (
             <div key={label} style={{ textAlign: 'center', padding: '10px 8px',
               background: 'var(--bg-input)', borderRadius: 'var(--radius-md)' }}>
@@ -167,7 +175,7 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
         </div>
       </div>
 
-      {/* Cuadrícula de cuotas */}
+      {/* ── Cuadrícula de cuotas ── */}
       <div className="card">
         <h2 style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 700 }}>Estado de cuotas</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 4 }}>
@@ -175,20 +183,16 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
             <div
               key={cuota.numero}
               title={`Cuota ${cuota.numero}: ${cuota.estado}`}
-              style={{
-                height: 14,
-                borderRadius: 2,
-                background: CUOTA_COLORS[cuota.estado] ?? 'var(--border)',
-              }}
+              style={{ height: 14, borderRadius: 2, background: CUOTA_COLORS[cuota.estado] ?? 'var(--border)' }}
             />
           ))}
         </div>
         <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
           {[
-            { label: 'Pagada', color: 'var(--success-500)' },
-            { label: 'Vencida', color: 'var(--danger-500)' },
-            { label: 'Pendiente', color: 'var(--border)' },
-            { label: 'Parcial', color: 'var(--warning-500)' },
+            { label: 'Pagada',   color: 'var(--success-500)' },
+            { label: 'Vencida',  color: 'var(--danger-500)' },
+            { label: 'Pendiente',color: 'var(--border)' },
+            { label: 'Parcial',  color: 'var(--warning-500)' },
           ].map(({ label, color }) => (
             <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
               <div style={{ width: 10, height: 10, borderRadius: 2, background: color }} />
@@ -198,21 +202,21 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
         </div>
       </div>
 
-      {/* Historial de cobros */}
+      {/* ── Historial de cobros ── */}
       {cobros && cobros.length > 0 && (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <h2 style={{ margin: 0, padding: '14px 16px', fontSize: 15, fontWeight: 700,
             borderBottom: '1px solid var(--border)' }}>
             Cobros registrados
           </h2>
-          {cobros.slice(0, 10).map((c: { _id: string; monto: number; tipo: string; hora: string; fecha: string; anulado: boolean }) => (
+          {cobros.slice(0, 15).map((c: { _id: string; monto: number; tipo: string; fecha: string; anulado: boolean }) => (
             <div key={c._id} className="list-item" style={{ cursor: 'default', opacity: c.anulado ? 0.5 : 1 }}>
               <CheckCircle2 size={18} color={c.anulado ? 'var(--text-muted)' : 'var(--success-500)'} />
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: 14, fontWeight: 600 }}>{formatCOP(c.monto)}</span>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--success-600)' }}>
-                    {c.anulado ? <span style={{ color: 'var(--danger-500)' }}>Anulado</span> : `+${formatCOP(c.monto)}`}
+                  <span style={{ fontSize: 14, fontWeight: 700, color: c.anulado ? 'var(--danger-500)' : 'var(--success-600)' }}>
+                    {c.anulado ? 'Anulado' : `+${formatCOP(c.monto)}`}
                   </span>
                 </div>
                 <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
@@ -224,7 +228,7 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
         </div>
       )}
 
-      {/* Acciones */}
+      {/* ── Acciones ── */}
       {isActivo && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <Link href={`/cobros/registrar?prestamoId=${id}`}>
@@ -238,37 +242,84 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
             onClick={() => setShowCancelModal(true)}
             style={{ background: 'transparent', color: 'var(--danger-500)', border: '1.5px solid var(--danger-500)' }}
           >
+            <XCircle size={18} />
             Cancelar préstamo
           </button>
         </div>
       )}
 
-      {/* Modal de cancelación */}
+      {/* ── Modal de cancelación — centrado, scrollable ── */}
       {showCancelModal && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgb(0 0 0 / 0.5)',
-          display: 'flex', alignItems: 'flex-end', zIndex: 200,
-        }} onClick={() => setShowCancelModal(false)}>
+        <div
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgb(0 0 0 / 0.65)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 300, padding: '20px 16px',
+            overflowY: 'auto',
+          }}
+          onClick={() => setShowCancelModal(false)}
+        >
           <div
-            className="animate-slide-up"
+            className="animate-fade-in"
             onClick={(e) => e.stopPropagation()}
             style={{
-              background: 'var(--bg-card)', borderRadius: '20px 20px 0 0',
-              padding: '24px 20px', width: '100%',
+              background: 'var(--bg-card)',
+              borderRadius: 'var(--radius-xl)',
+              padding: '24px 20px',
+              width: '100%', maxWidth: 430,
+              position: 'relative',
             }}
           >
-            <h3 style={{ margin: '0 0 16px', fontSize: 18, fontWeight: 700 }}>¿Cancelar préstamo?</h3>
-            <p style={{ margin: '0 0 16px', fontSize: 14, color: 'var(--text-muted)' }}>
-              Esta acción no se puede deshacer. El saldo pendiente se registrará como incobrable.
+            {/* Botón cerrar */}
+            <button
+              type="button"
+              onClick={() => setShowCancelModal(false)}
+              style={{
+                position: 'absolute', top: 16, right: 16,
+                background: 'var(--bg-input)', border: 'none',
+                borderRadius: 'var(--radius-sm)', width: 32, height: 32,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', color: 'var(--text-muted)',
+              }}
+            >
+              <X size={16} />
+            </button>
+
+            {/* Icono de advertencia */}
+            <div style={{
+              width: 56, height: 56, borderRadius: '50%',
+              background: 'rgb(239 68 68 / 0.1)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              margin: '0 auto 16px',
+            }}>
+              <AlertTriangle size={28} color="var(--danger-500)" />
+            </div>
+
+            <h3 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 700, textAlign: 'center' }}>
+              ¿Cancelar préstamo?
+            </h3>
+            <p style={{ margin: '0 0 20px', fontSize: 14, color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5 }}>
+              Esta acción no se puede deshacer. El saldo de{' '}
+              <strong style={{ color: 'var(--danger-500)' }}>{formatCOP(prestamo.saldoPendiente)}</strong>{' '}
+              quedará como incobrable.
             </p>
-            <textarea
-              className="input-field"
-              placeholder="Motivo de cancelación (mínimo 5 caracteres)"
-              rows={3}
-              value={motivo}
-              onChange={(e) => setMotivo(e.target.value)}
-              style={{ resize: 'none', marginBottom: 14 }}
-            />
+            <div style={{ marginBottom: 20 }}>
+              <label className="input-label">Motivo de cancelación *</label>
+              <textarea
+                className="input-field"
+                placeholder="Mínimo 5 caracteres..."
+                rows={3}
+                value={motivo}
+                onChange={(e) => setMotivo(e.target.value)}
+                style={{ resize: 'none' }}
+                autoFocus
+              />
+              {motivo.length > 0 && motivo.length < 5 && (
+                <p className="input-error">Mínimo 5 caracteres ({5 - motivo.length} restantes)</p>
+              )}
+            </div>
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <button className="btn-secondary" onClick={() => setShowCancelModal(false)}>
                 Volver

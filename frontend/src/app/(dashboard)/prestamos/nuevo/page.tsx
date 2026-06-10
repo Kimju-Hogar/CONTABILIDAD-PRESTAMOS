@@ -7,23 +7,26 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 import { Loader2, Calculator, Percent } from 'lucide-react';
 import { apiClient } from '@/services/api';
-import { calcularPrestamo, formatCOP, fechaHoyISO } from '@/lib/utils';
+import { calcularPrestamo, formatCOP, fechaHoyISO, type Modalidad, DEFAULT_CUOTAS } from '@/lib/utils';
 
+// ─── Constantes UI ────────────────────────────────────────────
 const TASAS_RAPIDAS = [10, 15, 20];
 
+const MODALIDADES_OPTIONS: { id: Modalidad; emoji: string; label: string }[] = [
+  { id: 'diaria',    emoji: '☀️',  label: 'Diaria' },
+  { id: 'semanal',   emoji: '📅',  label: 'Semanal' },
+  { id: 'quincenal', emoji: '🗓️', label: 'Quincenal' },
+  { id: 'mensual',   emoji: '📆',  label: 'Mensual' },
+];
+
+// ─── Schema — z.coerce.number() para aceptar string o number ─
 const schema = z.object({
-  clienteId: z.string().min(1, 'Selecciona un cliente'),
-  capital: z.string().min(1, 'El capital es requerido')
-    .transform(Number)
-    .pipe(z.number().min(10_000, 'Mínimo $10.000')),
-  modalidad: z.enum(['diaria', 'semanal'], { required_error: 'Selecciona una modalidad' }),
-  interes: z.string().min(1, 'El interés es requerido')
-    .transform(Number)
-    .pipe(z.number().min(5, 'Mínimo 5%').max(100, 'Máximo 100%')),
-  numeroCuotas: z.string().min(1, 'El plazo es requerido')
-    .transform(Number)
-    .pipe(z.number().int().positive('Debe ser mayor a 0')),
-  fechaInicio: z.string().min(1, 'La fecha de inicio es requerida'),
+  clienteId:    z.string().min(1, 'Selecciona un cliente'),
+  capital:      z.coerce.number({ invalid_type_error: 'Ingresa el capital' }).min(5_000, 'Mínimo $5.000'),
+  modalidad:    z.enum(['diaria', 'semanal', 'quincenal', 'mensual'] as const),
+  interes:      z.coerce.number({ invalid_type_error: 'Ingresa un porcentaje' }).min(5, 'Mínimo 5%').max(100, 'Máximo 100%'),
+  numeroCuotas: z.coerce.number({ invalid_type_error: 'Ingresa el plazo' }).int().positive('Mayor a 0'),
+  fechaInicio:  z.string().min(1, 'La fecha de inicio es requerida'),
   observaciones: z.string().max(1000).optional(),
 });
 
@@ -34,43 +37,66 @@ export default function NuevoPrestamoPage() {
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState('');
   const [preview, setPreview] = useState<ReturnType<typeof calcularPrestamo> | null>(null);
-  const [capitalVal, setCapitalVal] = useState('');
-  const [modalidadVal, setModalidadVal] = useState<'diaria' | 'semanal'>('diaria');
-  const [plazoVal, setPlazoVal] = useState('115');
-  const [interesVal, setInteresVal] = useState('20');
 
-  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormData>({
+  // Estado local para los inputs controlados
+  const [capitalVal, setCapitalVal]   = useState('');
+  const [modalidadVal, setModalidadVal] = useState<Modalidad>('diaria');
+  const [plazoVal, setPlazoVal]       = useState(String(DEFAULT_CUOTAS.diaria));
+  const [interesVal, setInteresVal]   = useState('20');
+
+  const { register, handleSubmit, setValue, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      fechaInicio: fechaHoyISO(),
-      modalidad: 'diaria',
-      numeroCuotas: '115' as unknown as number,
-      interes: '20' as unknown as number,
+      fechaInicio:  fechaHoyISO(),
+      modalidad:    'diaria',
+      numeroCuotas: DEFAULT_CUOTAS.diaria,
+      interes:      20,
     },
   });
 
+  // Clientes activos para el selector
   const { data: clientesData } = useQuery({
     queryKey: ['clientes-select'],
-    queryFn: () => apiClient.get('/api/clientes?estado=activo&limit=100').then((r) => r.data.data),
+    queryFn: () => apiClient.get('/api/clientes?estado=activo&limit=200').then((r) => r.data.data),
   });
 
-  const actualizarPreview = (capital: string, modalidad: 'diaria' | 'semanal', plazo: string, tasa: string) => {
-    const num = Number(capital.replace(/\D/g, ''));
+  // ─── Recalcular preview en tiempo real ────────────────────
+  const actualizarPreview = (
+    capital: string,
+    modalidad: Modalidad,
+    plazo: string,
+    tasa: string,
+  ) => {
+    const num  = Number(capital.replace(/\D/g, ''));
     const pNum = Number(plazo);
     const iNum = Number(tasa);
-    if (num >= 10_000 && pNum > 0 && iNum >= 5) {
+    if (num >= 5_000 && pNum > 0 && iNum >= 5 && iNum <= 100) {
       setPreview(calcularPrestamo(num, modalidad, pNum, iNum));
     } else {
       setPreview(null);
     }
   };
 
+  // ─── Cambio de modalidad ──────────────────────────────────
+  const cambiarModalidad = (m: Modalidad) => {
+    const defPlazo = String(DEFAULT_CUOTAS[m]);
+    setModalidadVal(m);
+    setPlazoVal(defPlazo);
+    setValue('modalidad', m);
+    setValue('numeroCuotas', DEFAULT_CUOTAS[m]);
+    actualizarPreview(capitalVal.replace(/\D/g, ''), m, defPlazo, interesVal);
+  };
+
+  // ─── Mutation ─────────────────────────────────────────────
   const { mutate, isPending } = useMutation({
     mutationFn: (data: FormData) => apiClient.post('/api/prestamos', {
-      ...data,
-      capital: typeof data.capital === 'string' ? Number((data.capital as string).replace(/\D/g, '')) : data.capital,
-      numeroCuotas: typeof data.numeroCuotas === 'string' ? Number(data.numeroCuotas) : data.numeroCuotas,
-      interes: typeof data.interes === 'string' ? Number(data.interes) : data.interes,
+      clienteId:    data.clienteId,
+      capital:      data.capital,
+      modalidad:    data.modalidad,
+      interes:      data.interes,
+      numeroCuotas: data.numeroCuotas,
+      fechaInicio:  data.fechaInicio,
+      observaciones: data.observaciones,
     }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['prestamos'] });
@@ -84,20 +110,21 @@ export default function NuevoPrestamoPage() {
     },
   });
 
+  // ─── Render ───────────────────────────────────────────────
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div>
         <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>Nuevo Préstamo</h1>
         <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
-          Tasa personalizada · Papelería $5.000 por $100.000
+          Tasa personalizable · Papelería $5.000 por cada $100.000
         </p>
       </div>
 
-      <form onSubmit={handleSubmit((data) => mutate(data))} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <form onSubmit={handleSubmit((d) => mutate(d))} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-        {/* Cliente */}
-        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <h2 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+        {/* ── Cliente ── */}
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <h2 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             Cliente
           </h2>
           <div>
@@ -113,9 +140,9 @@ export default function NuevoPrestamoPage() {
           </div>
         </div>
 
-        {/* Condiciones */}
+        {/* ── Condiciones ── */}
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <h2 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          <h2 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             Condiciones
           </h2>
 
@@ -130,17 +157,16 @@ export default function NuevoPrestamoPage() {
               onChange={(e) => {
                 const raw = e.target.value.replace(/\D/g, '');
                 setCapitalVal(raw ? `$ ${Number(raw).toLocaleString('es-CO')}` : '');
-                setValue('capital', raw as unknown as number);
+                setValue('capital', Number(raw));
                 actualizarPreview(raw, modalidadVal, plazoVal, interesVal);
               }}
             />
-            {errors.capital && <p className="input-error">{errors.capital.message as string}</p>}
+            {errors.capital && <p className="input-error">{errors.capital.message}</p>}
           </div>
 
           {/* Tasa de interés */}
           <div>
             <label className="input-label">Tasa de interés *</label>
-            {/* Botones rápidos */}
             <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
               {TASAS_RAPIDAS.map((tasa) => (
                 <button
@@ -149,19 +175,16 @@ export default function NuevoPrestamoPage() {
                   onClick={() => {
                     const t = String(tasa);
                     setInteresVal(t);
-                    setValue('interes', tasa as unknown as number);
+                    setValue('interes', tasa);
                     actualizarPreview(capitalVal.replace(/\D/g, ''), modalidadVal, plazoVal, t);
                   }}
                   style={{
-                    flex: 1,
-                    padding: '10px 4px',
+                    flex: 1, padding: '10px 4px',
                     border: `2px solid ${interesVal === String(tasa) ? 'var(--brand-500)' : 'var(--border)'}`,
                     borderRadius: 'var(--radius-md)',
                     background: interesVal === String(tasa) ? 'var(--brand-50)' : 'transparent',
                     color: interesVal === String(tasa) ? 'var(--brand-text)' : 'var(--text-primary)',
-                    fontWeight: 700,
-                    fontSize: 15,
-                    cursor: 'pointer',
+                    fontWeight: 700, fontSize: 15, cursor: 'pointer',
                     transition: 'all var(--transition)',
                   }}
                 >
@@ -169,61 +192,55 @@ export default function NuevoPrestamoPage() {
                 </button>
               ))}
             </div>
-            {/* Input personalizado */}
             <div style={{ position: 'relative' }}>
               <input
                 type="number"
                 className="input-field"
-                placeholder="Otro (ej. 12)"
-                min={5}
-                max={100}
+                placeholder="Otro % (ej. 12)"
+                min={5} max={100}
                 value={interesVal}
                 style={{ paddingRight: 36 }}
                 onChange={(e) => {
                   const raw = e.target.value;
                   setInteresVal(raw);
-                  setValue('interes', Number(raw) as unknown as number);
+                  setValue('interes', Number(raw));
                   actualizarPreview(capitalVal.replace(/\D/g, ''), modalidadVal, plazoVal, raw);
                 }}
               />
-              <Percent size={14} color="var(--text-muted)" style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              <Percent size={14} color="var(--text-muted)" style={{
+                position: 'absolute', right: 12, top: '50%',
+                transform: 'translateY(-50%)', pointerEvents: 'none',
+              }} />
             </div>
-            {errors.interes && <p className="input-error">{errors.interes.message as string}</p>}
+            {errors.interes && <p className="input-error">{errors.interes.message}</p>}
           </div>
 
-          {/* Modalidad */}
+          {/* Modalidad — grid 2×2 */}
           <div>
             <label className="input-label">Modalidad de pago *</label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              {(['diaria', 'semanal'] as const).map((m) => (
-                <label key={m} style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                  padding: '14px 10px',
-                  border: `2px solid ${modalidadVal === m ? 'var(--brand-500)' : 'var(--border)'}`,
-                  borderRadius: 'var(--radius-md)',
-                  background: modalidadVal === m ? 'var(--brand-50)' : 'transparent',
-                  cursor: 'pointer',
-                  transition: 'all var(--transition)',
-                  gap: 4,
-                }}>
-                  <input
-                    type="radio"
-                    value={m}
-                    style={{ display: 'none' }}
-                    {...register('modalidad')}
-                    onChange={() => {
-                      setModalidadVal(m);
-                      setValue('modalidad', m);
-                      const defPlazo = m === 'diaria' ? '115' : '4';
-                      setPlazoVal(defPlazo);
-                      setValue('numeroCuotas', defPlazo as unknown as number);
-                      actualizarPreview(capitalVal.replace(/\D/g, ''), m, defPlazo, interesVal);
-                    }}
-                  />
-                  <span style={{ fontSize: 15, fontWeight: 700, color: modalidadVal === m ? 'var(--brand-text)' : 'var(--text-primary)' }}>
-                    {m === 'diaria' ? 'Diaria' : 'Semanal'}
+              {MODALIDADES_OPTIONS.map(({ id, emoji, label }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => cambiarModalidad(id)}
+                  style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center',
+                    justifyContent: 'center', padding: '12px 8px', gap: 4,
+                    border: `2px solid ${modalidadVal === id ? 'var(--brand-500)' : 'var(--border)'}`,
+                    borderRadius: 'var(--radius-md)',
+                    background: modalidadVal === id ? 'var(--brand-50)' : 'transparent',
+                    cursor: 'pointer', transition: 'all var(--transition)',
+                  }}
+                >
+                  <span style={{ fontSize: 20 }}>{emoji}</span>
+                  <span style={{
+                    fontSize: 13, fontWeight: 700,
+                    color: modalidadVal === id ? 'var(--brand-text)' : 'var(--text-primary)',
+                  }}>
+                    {label}
                   </span>
-                </label>
+                </button>
               ))}
             </div>
             {errors.modalidad && <p className="input-error">{errors.modalidad.message}</p>}
@@ -231,16 +248,22 @@ export default function NuevoPrestamoPage() {
 
           {/* Plazo */}
           <div>
-            <label className="input-label">Plazo ({modalidadVal === 'diaria' ? 'Días' : 'Semanas'}) *</label>
+            <label className="input-label">
+              Número de cuotas
+              <span style={{ color: 'var(--text-muted)', fontWeight: 400, marginLeft: 6 }}>
+                ({modalidadVal === 'diaria' ? 'días' : modalidadVal === 'semanal' ? 'semanas' : modalidadVal === 'quincenal' ? 'quincenas' : 'meses'})
+              </span>
+            </label>
             <input
               type="number"
               className="input-field"
-              placeholder="Ej. 20"
+              placeholder={`Ej. ${DEFAULT_CUOTAS[modalidadVal]}`}
               value={plazoVal}
+              min={1}
               onChange={(e) => {
-                const raw = e.target.value.replace(/\D/g, '');
+                const raw = e.target.value;
                 setPlazoVal(raw);
-                setValue('numeroCuotas', raw as unknown as number);
+                setValue('numeroCuotas', Number(raw));
                 actualizarPreview(capitalVal.replace(/\D/g, ''), modalidadVal, raw, interesVal);
               }}
             />
@@ -255,7 +278,7 @@ export default function NuevoPrestamoPage() {
           </div>
         </div>
 
-        {/* Preview de cálculo */}
+        {/* ── Preview de cálculo ── */}
         {preview && (
           <div className="card animate-fade-in" style={{
             background: 'linear-gradient(135deg, rgb(79 70 229 / 0.08), rgb(124 58 237 / 0.08))',
@@ -269,13 +292,13 @@ export default function NuevoPrestamoPage() {
             </div>
 
             {[
-              { label: 'Capital', value: formatCOP(Number(capitalVal.replace(/\D/g, ''))), highlight: false },
-              { label: 'Papelería (descuento al cliente)', value: `- ${formatCOP(preview.papeleria)}`, highlight: false },
-              { label: 'El cliente recibe', value: formatCOP(preview.montoDesembolsado), highlight: true },
+              { label: 'Capital',                              value: formatCOP(Number(capitalVal.replace(/\D/g, ''))), hi: false },
+              { label: 'Papelería (descuento al cliente)',     value: `- ${formatCOP(preview.papeleria)}`,              hi: false },
+              { label: 'El cliente recibe',                   value: formatCOP(preview.montoDesembolsado),              hi: true },
               null,
-              { label: `Interés (${interesVal}%)`, value: formatCOP(preview.totalInteres), highlight: false },
-              { label: 'Total a cobrar', value: formatCOP(preview.totalPagar), highlight: true },
-              { label: preview.descripcion, value: '', highlight: false },
+              { label: `Interés (${interesVal}%)`,            value: formatCOP(preview.totalInteres),                   hi: false },
+              { label: 'Total a cobrar',                      value: formatCOP(preview.totalPagar),                     hi: true },
+              { label: preview.descripcion,                   value: '',                                                hi: false },
             ].map((item, i) =>
               item === null ? (
                 <div key={i} className="divider" style={{ margin: '10px 0' }} />
@@ -284,15 +307,12 @@ export default function NuevoPrestamoPage() {
                   {item.label}
                 </p>
               ) : (
-                <div key={i} style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  marginBottom: 8,
-                }}>
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                   <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{item.label}</span>
                   <span style={{
-                    fontSize: item.highlight ? 16 : 14,
-                    fontWeight: item.highlight ? 800 : 600,
-                    color: item.highlight ? 'var(--brand-text)' : 'var(--text-primary)',
+                    fontSize: item.hi ? 16 : 14,
+                    fontWeight: item.hi ? 800 : 600,
+                    color: item.hi ? 'var(--brand-text)' : 'var(--text-primary)',
                   }}>
                     {item.value}
                   </span>
@@ -302,7 +322,7 @@ export default function NuevoPrestamoPage() {
           </div>
         )}
 
-        {/* Observaciones */}
+        {/* ── Observaciones ── */}
         <div className="card">
           <label className="input-label">Observaciones</label>
           <textarea
@@ -327,7 +347,9 @@ export default function NuevoPrestamoPage() {
         <button type="submit" className="btn-primary" disabled={isPending || !preview} id="btn-crear-prestamo">
           {isPending
             ? <><Loader2 size={18} className="animate-pulse-soft" /> Creando préstamo...</>
-            : `Crear préstamo · ${preview ? formatCOP(preview.totalPagar) : ''}`
+            : preview
+              ? `Crear préstamo · ${formatCOP(preview.totalPagar)}`
+              : 'Completa el formulario para continuar'
           }
         </button>
       </form>

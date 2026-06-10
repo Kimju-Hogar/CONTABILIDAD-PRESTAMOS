@@ -1,4 +1,4 @@
-import { addDays, addWeeks, startOfDay } from 'date-fns';
+import { addDays, addWeeks, addMonths, startOfDay } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import mongoose from 'mongoose';
 import { PrestamoModel, IPrestamo, ICuota } from '../../models/Prestamo.model';
@@ -7,7 +7,8 @@ import { NotFoundError, AppError } from '../../shared/middleware/error.middlewar
 import { buildPagination } from '../../shared/utils/responses';
 import { getSocketIO } from '../../config/socket';
 import {
-  INTERES_FIJO, CUOTAS_DIARIAS, CUOTAS_SEMANALES, calcularPapeleria,
+  INTERES_FIJO, CUOTAS_DIARIAS, DEFAULT_CUOTAS, calcularPapeleria,
+  type Modalidad,
   type CrearPrestamoDto, type RefinanciarPrestamoDto, type FiltrosPrestamoDto,
   type CancelarPrestamoDto,
 } from './prestamos.dto';
@@ -17,21 +18,27 @@ const TIMEZONE = 'America/Bogota';
 // ─── Cálculo financiero central ──────────────────────────────
 export function calcularPrestamo(
   capital: number,
-  modalidad: 'diaria' | 'semanal',
+  modalidad: Modalidad,
   fechaInicio: Date,
   plazoPersonalizado?: number,
   interes: number = INTERES_FIJO
 ) {
-  const numeroCuotas = plazoPersonalizado ?? (modalidad === 'diaria' ? CUOTAS_DIARIAS : CUOTAS_SEMANALES);
+  const numeroCuotas = plazoPersonalizado ?? DEFAULT_CUOTAS[modalidad];
   const totalInteres = Math.round(capital * interes / 100);
   const totalPagar = capital + totalInteres;
   const cuotaBase = totalPagar / numeroCuotas;
   // Redondear al múltiplo de 100 más cercano hacia arriba
   const cuotaMonto = Math.ceil(cuotaBase / 100) * 100;
 
-  const fechaFin = modalidad === 'diaria'
-    ? addDays(fechaInicio, numeroCuotas - 1)
-    : addWeeks(fechaInicio, numeroCuotas);
+  // fechaFin según modalidad
+  const fechaFin = (() => {
+    switch (modalidad) {
+      case 'diaria':    return addDays(fechaInicio, numeroCuotas - 1);
+      case 'semanal':   return addWeeks(fechaInicio, numeroCuotas);
+      case 'quincenal': return addDays(fechaInicio, numeroCuotas * 15);
+      case 'mensual':   return addMonths(fechaInicio, numeroCuotas);
+    }
+  })();
 
   const papeleria = calcularPapeleria(capital);
   const montoDesembolsado = capital - papeleria;
@@ -51,12 +58,18 @@ function generarCuotas(
   fechaInicio: Date,
   numeroCuotas: number,
   cuotaMonto: number,
-  modalidad: 'diaria' | 'semanal'
+  modalidad: Modalidad
 ): ICuota[] {
   return Array.from({ length: numeroCuotas }, (_, i) => {
-    const fechaEsperada = modalidad === 'diaria'
-      ? addDays(startOfDay(fechaInicio), i)
-      : addWeeks(startOfDay(fechaInicio), i + 1);
+    const base = startOfDay(fechaInicio);
+    const fechaEsperada = (() => {
+      switch (modalidad) {
+        case 'diaria':    return addDays(base, i);
+        case 'semanal':   return addWeeks(base, i + 1);
+        case 'quincenal': return addDays(base, (i + 1) * 15);
+        case 'mensual':   return addMonths(base, i + 1);
+      }
+    })();
 
     return {
       numero: i + 1,

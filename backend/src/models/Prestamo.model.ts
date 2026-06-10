@@ -14,10 +14,13 @@ export interface IPrestamo extends Document {
   cobrador: Types.ObjectId;
   capital: number;
   interes: number;           // Porcentaje (ej: 20 = 20%)
+  modalidad: 'diaria' | 'semanal' | 'quincenal' | 'mensual';
   totalInteres: number;      // capital * interes / 100
   totalPagar: number;        // capital + totalInteres
   numeroCuotas: number;
   cuotaDiaria: number;       // totalPagar / numeroCuotas
+  papeleria: number;
+  montoDesembolsado: number;
   fechaInicio: Date;
   fechaFin: Date;
   saldoPendiente: number;
@@ -91,6 +94,13 @@ const PrestamoSchema = new Schema<IPrestamo>(
       enum: ['activo', 'completado', 'cancelado', 'refinanciado'],
       default: 'activo',
     },
+    modalidad: {
+      type: String,
+      enum: ['diaria', 'semanal', 'quincenal', 'mensual'],
+      default: 'diaria',
+    },
+    papeleria: { type: Number, default: 0 },
+    montoDesembolsado: { type: Number, default: 0 },
     cuotas: {
       type: [CuotaSchema],
       default: [],
