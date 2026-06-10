@@ -7,7 +7,7 @@ import { NotFoundError, AppError } from '../../shared/middleware/error.middlewar
 import { buildPagination } from '../../shared/utils/responses';
 import { getSocketIO } from '../../config/socket';
 import {
-  INTERES_FIJO, CUOTAS_DIARIAS, DEFAULT_CUOTAS, calcularPapeleria,
+  INTERES_FIJO, DEFAULT_CUOTAS, calcularPapeleria,
   type Modalidad,
   type CrearPrestamoDto, type RefinanciarPrestamoDto, type FiltrosPrestamoDto,
   type CancelarPrestamoDto,
