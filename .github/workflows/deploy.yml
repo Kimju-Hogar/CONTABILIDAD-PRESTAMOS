@@ -23,7 +23,7 @@ jobs:
           port: ${{ secrets.VPS_PORT || 22 }}
           script: |
             cd /opt/gotagota
-            git pull origin main
+            git pull origin master
             bash ./scripts/deploy.sh
             echo "✅ Despliegue completado"
 
