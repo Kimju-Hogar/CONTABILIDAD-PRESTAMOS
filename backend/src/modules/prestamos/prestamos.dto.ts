@@ -61,6 +61,15 @@ export const CancelarPrestamoDto = z.object({
   motivo: z.string().min(5, 'El motivo debe tener al menos 5 caracteres'),
 });
 
+export const EditarPrestamoDto = z.object({
+  capital: z.number().positive().min(5_000).optional(),
+  modalidad: z.enum(MODALIDAD_VALUES).optional(),
+  interes: z.number().min(5).max(100).optional(),
+  numeroCuotas: z.number().int().positive().optional(),
+  fechaInicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).transform((v) => new Date(v + 'T00:00:00')).optional(),
+  observaciones: z.string().max(1000).optional(),
+});
+
 export const FiltrosPrestamoDto = z.object({
   clienteId: z.string().optional(),
   cobradorId: z.string().optional(),
@@ -73,4 +82,5 @@ export const FiltrosPrestamoDto = z.object({
 export type CrearPrestamoDto = z.infer<typeof CrearPrestamoDto>;
 export type RefinanciarPrestamoDto = z.infer<typeof RefinanciarPrestamoDto>;
 export type CancelarPrestamoDto = z.infer<typeof CancelarPrestamoDto>;
+export type EditarPrestamoDto = z.infer<typeof EditarPrestamoDto>;
 export type FiltrosPrestamoDto = z.infer<typeof FiltrosPrestamoDto>;

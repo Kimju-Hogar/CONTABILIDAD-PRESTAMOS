@@ -2,7 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import { prestamosService } from './prestamos.service';
 import {
   CrearPrestamoDto, FiltrosPrestamoDto,
-  RefinanciarPrestamoDto, CancelarPrestamoDto
+  RefinanciarPrestamoDto, CancelarPrestamoDto,
+  EditarPrestamoDto
 } from './prestamos.dto';
 import { ResponseHelper } from '../../shared/utils/responses';
 
@@ -43,6 +44,21 @@ export class PrestamosController {
       const dto = RefinanciarPrestamoDto.parse(req.body);
       const prestamo = await prestamosService.refinanciar(req.params['id']!, dto, req.user!.sub);
       ResponseHelper.created(res, prestamo, 'Préstamo refinanciado exitosamente');
+    } catch (error) { next(error); }
+  }
+
+  async editar(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const dto = EditarPrestamoDto.parse(req.body);
+      const prestamo = await prestamosService.editar(req.params['id']!, dto, req.user!.sub);
+      ResponseHelper.success(res, prestamo, 'Préstamo editado exitosamente');
+    } catch (error) { next(error); }
+  }
+
+  async eliminar(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      await prestamosService.eliminar(req.params['id']!, req.user!.sub);
+      ResponseHelper.success(res, null, 'Préstamo eliminado exitosamente');
     } catch (error) { next(error); }
   }
 }
