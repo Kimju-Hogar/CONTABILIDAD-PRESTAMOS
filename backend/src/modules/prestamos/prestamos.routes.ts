@@ -28,4 +28,18 @@ router.post(
   prestamosController.refinanciar.bind(prestamosController)
 );
 
+router.put(
+  '/:id',
+  adminOnly,
+  auditMiddleware({ accion: 'UPDATE_PRESTAMO', recurso: 'Prestamo', getRecursoId: (r) => r.params['id'] }),
+  prestamosController.editar.bind(prestamosController)
+);
+
+router.delete(
+  '/:id',
+  adminOnly,
+  auditMiddleware({ accion: 'DELETE_PRESTAMO', recurso: 'Prestamo', getRecursoId: (r) => r.params['id'] }),
+  prestamosController.eliminar.bind(prestamosController)
+);
+
 export default router;

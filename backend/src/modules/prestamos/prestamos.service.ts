@@ -10,7 +10,7 @@ import {
   INTERES_FIJO, DEFAULT_CUOTAS, calcularPapeleria,
   type Modalidad,
   type CrearPrestamoDto, type RefinanciarPrestamoDto, type FiltrosPrestamoDto,
-  type CancelarPrestamoDto,
+  type CancelarPrestamoDto, type EditarPrestamoDto
 } from './prestamos.dto';
 
 const TIMEZONE = 'America/Bogota';
@@ -222,6 +222,69 @@ export class PrestamosService {
       { arrayFilters: [{ 'c.estado': 'pendiente', 'c.fechaEsperada': { $lt: hoy } }] }
     );
     return result.modifiedCount;
+  }
+
+  async editar(id: string, dto: EditarPrestamoDto, usuarioId: string): Promise<IPrestamo> {
+    const prestamo = await PrestamoModel.findById(id);
+    if (!prestamo) throw new AppError('Préstamo no encontrado', 404);
+    if (prestamo.estado !== 'activo') throw new AppError('Solo se pueden editar préstamos activos', 400);
+
+    const changes: Partial<IPrestamo> = {
+      updatedBy: new mongoose.Types.ObjectId(usuarioId),
+    };
+
+    let recalculate = false;
+    let capital = prestamo.capital;
+    let interes = prestamo.interes;
+    let numeroCuotas = prestamo.numeroCuotas;
+    let modalidad = prestamo.modalidad || 'diaria';
+    let fechaInicio = prestamo.fechaInicio;
+
+    if (dto.capital !== undefined && dto.capital !== capital) { capital = dto.capital; recalculate = true; }
+    if (dto.interes !== undefined && dto.interes !== interes) { interes = dto.interes; recalculate = true; }
+    if (dto.numeroCuotas !== undefined && dto.numeroCuotas !== numeroCuotas) { numeroCuotas = dto.numeroCuotas; recalculate = true; }
+    if (dto.modalidad !== undefined && dto.modalidad !== modalidad) { modalidad = dto.modalidad; recalculate = true; }
+    if (dto.fechaInicio !== undefined && dto.fechaInicio.getTime() !== fechaInicio.getTime()) { fechaInicio = dto.fechaInicio; recalculate = true; }
+    if (dto.observaciones !== undefined) changes.observaciones = dto.observaciones;
+
+    if (recalculate) {
+      if (prestamo.totalCobrado > 0) {
+        throw new AppError('No se pueden modificar condiciones si ya hay cuotas pagadas. Refinancia o elimina pagos.', 400);
+      }
+      const calc = this.calcularPrestamo(capital, interes, numeroCuotas, modalidad, fechaInicio);
+      const cuotas = this.generarCuotas(fechaInicio, numeroCuotas, modalidad, calc.cuotaMonto);
+
+      changes.capital = capital;
+      changes.interes = interes;
+      changes.modalidad = modalidad;
+      changes.numeroCuotas = numeroCuotas;
+      changes.fechaInicio = fechaInicio;
+      changes.fechaFin = calc.fechaFin;
+      changes.papeleria = calc.papeleria;
+      changes.montoDesembolsado = calc.montoDesembolsado;
+      changes.totalInteres = calc.totalInteres;
+      changes.totalPagar = calc.totalPagar;
+      changes.cuotaDiaria = calc.cuotaMonto;
+      changes.saldoPendiente = calc.totalPagar;
+      changes.cuotas = cuotas;
+    }
+
+    Object.assign(prestamo, changes);
+    await prestamo.save();
+    return prestamo;
+  }
+
+  async eliminar(id: string, usuarioId: string): Promise<void> {
+    const prestamo = await PrestamoModel.findById(id);
+    if (!prestamo) throw new AppError('Préstamo no encontrado', 404);
+
+    if (prestamo.totalCobrado > 0) {
+      throw new AppError('No se puede eliminar un préstamo con pagos registrados. Cancela el préstamo en su lugar.', 400);
+    }
+
+    prestamo.deletedAt = new Date();
+    prestamo.updatedBy = new mongoose.Types.ObjectId(usuarioId);
+    await prestamo.save();
   }
 }
 

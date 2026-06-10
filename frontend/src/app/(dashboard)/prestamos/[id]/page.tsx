@@ -3,7 +3,7 @@ import { useState, use } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { CheckCircle2, AlertTriangle, XCircle, Loader2, Phone, X } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle, Loader2, Phone, X, Trash2, Edit2 } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { formatCOP, formatFechaCO, formatFechaHoraCO, porcentajeProgreso } from '@/lib/utils';
 
@@ -24,7 +24,12 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
   const router = useRouter();
   const queryClient = useQueryClient();
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [motivo, setMotivo] = useState('');
+  
+  // Edit form state
+  const [editData, setEditData] = useState<any>(null);
 
   const { data: prestamo, isLoading } = useQuery({
     queryKey: ['prestamo', id],
@@ -46,6 +51,38 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
       router.push('/prestamos');
     },
   });
+
+  const { mutate: eliminar, isPending: eliminando } = useMutation({
+    mutationFn: () => apiClient.delete(`/api/prestamos/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['prestamos'] });
+      queryClient.invalidateQueries({ queryKey: ['cliente-prestamos'] });
+      setShowDeleteModal(false);
+      router.push('/prestamos');
+    },
+  });
+
+  const { mutate: editar, isPending: editando } = useMutation({
+    mutationFn: (data: any) => apiClient.put(`/api/prestamos/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['prestamo', id] });
+      queryClient.invalidateQueries({ queryKey: ['prestamos'] });
+      setShowEditModal(false);
+    },
+    onError: (err: any) => alert(err.response?.data?.message || 'Error al editar'),
+  });
+
+  const abrirEdicion = () => {
+    setEditData({
+      capital: prestamo.capital,
+      interes: prestamo.interes,
+      modalidad: prestamo.modalidad,
+      numeroCuotas: prestamo.numeroCuotas,
+      fechaInicio: prestamo.fechaInicio.split('T')[0],
+      observaciones: prestamo.observaciones || '',
+    });
+    setShowEditModal(true);
+  };
 
   if (isLoading) {
     return (
@@ -94,11 +131,26 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
           }}>
             <span style={{ fontWeight: 700 }}>{prestamo.cliente?.nombre?.[0]}</span>
           </div>
-          <div>
+          <div style={{ flex: 1 }}>
             <p style={{ margin: 0, fontWeight: 700 }}>{prestamo.cliente?.nombre}</p>
             <p style={{ margin: '2px 0 0', opacity: 0.8, fontSize: 12 }}>{prestamo.cliente?.celular}</p>
           </div>
-          <a href={`tel:${prestamo.cliente?.celular}`} style={{ marginLeft: 'auto' }}>
+          {isActivo && prestamo.totalCobrado === 0 && (
+            <button
+              type="button"
+              onClick={abrirEdicion}
+              style={{
+                background: 'rgb(255 255 255 / 0.2)', border: 'none',
+                borderRadius: 'var(--radius-md)', padding: '8px 12px',
+                color: 'white', fontWeight: 600, fontSize: 13,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+                marginRight: 10
+              }}
+            >
+              <Edit2 size={15} /> Editar
+            </button>
+          )}
+          <a href={`tel:${prestamo.cliente?.celular}`}>
             <div style={{
               background: 'rgb(255 255 255 / 0.2)', width: 36, height: 36,
               borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -245,6 +297,15 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
             <XCircle size={18} />
             Cancelar préstamo
           </button>
+          {prestamo.totalCobrado === 0 && (
+            <button
+              className="btn-danger"
+              onClick={() => setShowDeleteModal(true)}
+            >
+              <Trash2 size={18} />
+              Eliminar préstamo
+            </button>
+          )}
         </div>
       )}
 
@@ -330,6 +391,148 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
                 onClick={() => cancelar()}
               >
                 {cancelando ? <Loader2 size={16} className="animate-pulse-soft" /> : 'Confirmar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal de eliminación ── */}
+      {showDeleteModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgb(0 0 0 / 0.65)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 300, padding: '20px 16px',
+          }}
+          onClick={() => setShowDeleteModal(false)}
+        >
+          <div
+            className="animate-fade-in"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--bg-card)',
+              borderRadius: 'var(--radius-xl)',
+              padding: '24px 20px',
+              width: '100%', maxWidth: 400,
+              position: 'relative',
+              textAlign: 'center',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setShowDeleteModal(false)}
+              style={{
+                position: 'absolute', top: 16, right: 16,
+                background: 'var(--bg-input)', border: 'none',
+                borderRadius: 'var(--radius-sm)', width: 32, height: 32,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', color: 'var(--text-muted)',
+              }}
+            >
+              <X size={16} />
+            </button>
+
+            <div style={{
+              width: 56, height: 56, borderRadius: '50%',
+              background: 'rgb(239 68 68 / 0.1)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              margin: '0 auto 16px',
+            }}>
+              <Trash2 size={28} color="var(--danger-500)" />
+            </div>
+
+            <h3 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 700 }}>¿Eliminar préstamo?</h3>
+            <p style={{ margin: '0 0 20px', fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              Se eliminará este préstamo de la base de datos permanentemente. Esta acción es irreversible.
+            </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <button className="btn-secondary" onClick={() => setShowDeleteModal(false)}>
+                Cancelar
+              </button>
+              <button
+                className="btn-danger"
+                disabled={eliminando}
+                onClick={() => eliminar()}
+              >
+                {eliminando ? <Loader2 size={16} className="animate-pulse-soft" /> : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal de Edición ── */}
+      {showEditModal && editData && (
+        <div
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgb(0 0 0 / 0.65)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 300, padding: '20px 16px',
+            overflowY: 'auto'
+          }}
+          onClick={() => setShowEditModal(false)}
+        >
+          <div
+            className="animate-fade-in"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--bg-card)',
+              borderRadius: 'var(--radius-xl)',
+              padding: '24px 20px',
+              width: '100%', maxWidth: 450,
+              position: 'relative',
+            }}
+          >
+            <h3 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 700 }}>Editar Préstamo</h3>
+            
+            <div style={{ display: 'grid', gap: 14 }}>
+              <div>
+                <label className="input-label">Capital</label>
+                <input type="number" className="input-field" value={editData.capital}
+                  onChange={(e) => setEditData({ ...editData, capital: Number(e.target.value) })} />
+              </div>
+              <div>
+                <label className="input-label">Modalidad</label>
+                <select className="input-field" value={editData.modalidad}
+                  onChange={(e) => setEditData({ ...editData, modalidad: e.target.value })}>
+                  <option value="diaria">Diaria</option>
+                  <option value="semanal">Semanal</option>
+                  <option value="quincenal">Quincenal</option>
+                  <option value="mensual">Mensual</option>
+                </select>
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <label className="input-label">Interés (%)</label>
+                  <input type="number" className="input-field" value={editData.interes}
+                    onChange={(e) => setEditData({ ...editData, interes: Number(e.target.value) })} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label className="input-label">Número de Cuotas</label>
+                  <input type="number" className="input-field" value={editData.numeroCuotas}
+                    onChange={(e) => setEditData({ ...editData, numeroCuotas: Number(e.target.value) })} />
+                </div>
+              </div>
+              <div>
+                <label className="input-label">Fecha de Inicio</label>
+                <input type="date" className="input-field" value={editData.fechaInicio}
+                  onChange={(e) => setEditData({ ...editData, fechaInicio: e.target.value })} />
+              </div>
+              <div>
+                <label className="input-label">Observaciones</label>
+                <textarea className="input-field" value={editData.observaciones}
+                  onChange={(e) => setEditData({ ...editData, observaciones: e.target.value })} />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 20 }}>
+              <button className="btn-secondary" onClick={() => setShowEditModal(false)}>Cancelar</button>
+              <button className="btn-primary" disabled={editando} onClick={() => editar(editData)}>
+                {editando ? <Loader2 size={16} className="animate-pulse-soft" /> : 'Guardar Cambios'}
               </button>
             </div>
           </div>
