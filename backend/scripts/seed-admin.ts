@@ -17,6 +17,7 @@ const ADMIN_NOMBRE   = process.env['ADMIN_NOMBRE']   ?? 'Administrador';
 const ADMIN_EMAIL    = process.env['ADMIN_EMAIL']    ?? 'admin@gotagota.com';
 const ADMIN_PASSWORD = process.env['ADMIN_PASSWORD'] ?? 'Admin1234!';
 const MONGODB_URI    = process.env['MONGODB_URI']    ?? '';
+const MONGODB_DB     = process.env['MONGODB_DB']     ?? 'gotagota';
 
 if (!MONGODB_URI) {
   console.error('❌ MONGODB_URI no está definida en el .env');
@@ -43,8 +44,8 @@ async function main() {
   console.log('\n🌱 GotaGota — Seed de usuario admin\n');
 
   // Conectar
-  console.log(`📡 Conectando a MongoDB...`);
-  await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 5000 });
+  console.log(`📡 Conectando a MongoDB (DB: ${MONGODB_DB})...`);
+  await mongoose.connect(MONGODB_URI, { dbName: MONGODB_DB, serverSelectionTimeoutMS: 5000 });
   console.log('✅ Conectado\n');
 
   // Verificar si ya existe
