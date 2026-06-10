@@ -251,8 +251,8 @@ export class PrestamosService {
       if (prestamo.totalCobrado > 0) {
         throw new AppError('No se pueden modificar condiciones si ya hay cuotas pagadas. Refinancia o elimina pagos.', 400);
       }
-      const calc = this.calcularPrestamo(capital, interes, numeroCuotas, modalidad, fechaInicio);
-      const cuotas = this.generarCuotas(fechaInicio, numeroCuotas, modalidad, calc.cuotaMonto);
+      const calc = calcularPrestamo(capital, modalidad, fechaInicio, numeroCuotas, interes);
+      const cuotas = generarCuotas(fechaInicio, numeroCuotas, calc.cuotaMonto, modalidad);
 
       changes.capital = capital;
       changes.interes = interes;
