@@ -1,0 +1,10 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "installCommand": "npm install --legacy-peer-deps",
+  "env": {
+    "NEXT_PUBLIC_API_URL": "https://api-api-prestamos.kimjuhogar.com",
+    "NEXT_PUBLIC_WS_URL": "https://api-api-prestamos.kimjuhogar.com",
+    "NEXT_PUBLIC_APP_URL": "https://contabilidad-prestamos-dos.vercel.app"
+  }
+}
