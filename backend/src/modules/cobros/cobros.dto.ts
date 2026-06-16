@@ -10,7 +10,8 @@ export const RegistrarCobroDto = z.object({
     lng: z.number(),
     precision: z.number().optional(),
   }).optional(),
-  fecha: z.string().optional(), // ISO date string
+  fecha: z.string().optional(), // ISO date string — permite registrar pagos históricos
+  cuotasSeleccionadas: z.array(z.number().int().positive()).optional(), // Números de cuota a marcar como pagadas
 });
 
 export const AnularCobroDto = z.object({

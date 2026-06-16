@@ -66,20 +66,44 @@ export class CobrosService {
     // Determinar qué cuotas aplica este cobro
     const cuotasAplicadas: number[] = [];
     let montoRestante = dto.monto;
-    for (const cuota of prestamo.cuotas) {
-      if (montoRestante <= 0) break;
-      if (cuota.estado === 'pagada') continue;
 
-      cuotasAplicadas.push(cuota.numero);
-      if (montoRestante >= cuota.monto) {
-        cuota.estado = 'pagada';
-        cuota.fechaPago = ahora;
-        cuota.montoPagado = cuota.monto;
-        montoRestante -= cuota.monto;
-      } else {
-        cuota.estado = 'parcial';
-        cuota.montoPagado = montoRestante;
-        montoRestante = 0;
+    if (dto.cuotasSeleccionadas && dto.cuotasSeleccionadas.length > 0) {
+      // Modo manual: aplicar solo a las cuotas seleccionadas (para pagos históricos)
+      const numerosSeleccionados = new Set(dto.cuotasSeleccionadas);
+      for (const cuota of prestamo.cuotas) {
+        if (montoRestante <= 0) break;
+        if (!numerosSeleccionados.has(cuota.numero)) continue;
+        if (cuota.estado === 'pagada') continue;
+
+        cuotasAplicadas.push(cuota.numero);
+        if (montoRestante >= cuota.monto) {
+          cuota.estado = 'pagada';
+          cuota.fechaPago = ahora;
+          cuota.montoPagado = cuota.monto;
+          montoRestante -= cuota.monto;
+        } else {
+          cuota.estado = 'parcial';
+          cuota.montoPagado = montoRestante;
+          montoRestante = 0;
+        }
+      }
+    } else {
+      // Modo automático: aplicar secuencialmente desde la cuota más antigua pendiente
+      for (const cuota of prestamo.cuotas) {
+        if (montoRestante <= 0) break;
+        if (cuota.estado === 'pagada') continue;
+
+        cuotasAplicadas.push(cuota.numero);
+        if (montoRestante >= cuota.monto) {
+          cuota.estado = 'pagada';
+          cuota.fechaPago = ahora;
+          cuota.montoPagado = cuota.monto;
+          montoRestante -= cuota.monto;
+        } else {
+          cuota.estado = 'parcial';
+          cuota.montoPagado = montoRestante;
+          montoRestante = 0;
+        }
       }
     }
 

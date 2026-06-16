@@ -198,6 +198,100 @@ export class DashboardService {
       { $limit: 50 },
     ]);
   }
+  async getClientesACobrarHoy() {
+    const { inicio, fin } = rangoHoy();
+
+    // 1. Préstamos activos con cuotas esperadas hoy o cuotas vencidas (sin pagar)
+    const prestamosHoy = await PrestamoModel.aggregate([
+      {
+        $match: {
+          estado: 'activo',
+          deletedAt: null,
+        },
+      },
+      {
+        // Filtrar cuotas que corresponden a hoy (pendientes/vencidas)
+        $addFields: {
+          cuotasHoy: {
+            $filter: {
+              input: '$cuotas',
+              cond: {
+                $and: [
+                  { $in: ['$$this.estado', ['pendiente', 'vencida', 'parcial']] },
+                  {
+                    $lte: [
+                      '$$this.fechaEsperada',
+                      fin,
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+      {
+        $match: {
+          'cuotasHoy.0': { $exists: true }, // Al menos una cuota debida hoy o antes
+        },
+      },
+      {
+        $lookup: {
+          from: 'clientes',
+          localField: 'cliente',
+          foreignField: '_id',
+          as: 'clienteInfo',
+        },
+      },
+      { $unwind: '$clienteInfo' },
+      {
+        $lookup: {
+          from: 'cobros',
+          let: { prestamoId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$prestamo', '$$prestamoId'] },
+                fecha: { $gte: inicio, $lte: fin },
+                anulado: false,
+              },
+            },
+          ],
+          as: 'cobrosHoy',
+        },
+      },
+      {
+        $project: {
+          prestamoId: '$_id',
+          clienteId: '$clienteInfo._id',
+          clienteNombre: '$clienteInfo.nombre',
+          clienteCelular: '$clienteInfo.celular',
+          modalidad: 1,
+          cuotaDiaria: 1,
+          saldoPendiente: 1,
+          cuotasVencidas: {
+            $size: {
+              $filter: {
+                input: '$cuotas',
+                cond: { $eq: ['$$this.estado', 'vencida'] },
+              },
+            },
+          },
+          // Próxima cuota pendiente
+          proximaCuota: { $arrayElemAt: ['$cuotasHoy', 0] },
+          // Si ya hay cobro registrado hoy
+          pagadoHoy: { $gt: [{ $size: '$cobrosHoy' }, 0] },
+          montoCobradoHoy: { $sum: '$cobrosHoy.monto' },
+        },
+      },
+      // Ordenar: primero los no pagados, luego por cuotas vencidas descendente
+      {
+        $sort: { pagadoHoy: 1, cuotasVencidas: -1, clienteNombre: 1 },
+      },
+    ]);
+
+    return prestamosHoy;
+  }
 }
 
 export const dashboardService = new DashboardService();

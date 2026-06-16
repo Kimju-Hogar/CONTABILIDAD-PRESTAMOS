@@ -28,4 +28,11 @@ router.get('/morosos', async (_req: Request, res: Response, next: NextFunction) 
   } catch (error) { next(error); }
 });
 
+router.get('/cobrar-hoy', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await dashboardService.getClientesACobrarHoy();
+    ResponseHelper.success(res, data);
+  } catch (error) { next(error); }
+});
+
 export default router;

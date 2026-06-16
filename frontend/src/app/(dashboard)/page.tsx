@@ -1,17 +1,21 @@
 'use client';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { TrendingUp, Users, AlertTriangle, DollarSign, Plus, ArrowRight, Loader2 } from 'lucide-react';
+import {
+  TrendingUp, Users, AlertTriangle, DollarSign, Plus, ArrowRight,
+  Loader2, Phone, CheckCircle2, Clock, Zap,
+} from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { formatCOP, formatFechaCO } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 
 // ─── KPI Card ─────────────────────────────────────────────────
 function KPICard({
-  label, value, sub, gradient, icon: Icon
+  label, value, sub, gradient, icon: Icon,
 }: {
   label: string; value: string; sub?: string;
   gradient: string; icon: React.ElementType;
@@ -43,7 +47,7 @@ const COPTooltip = ({ active, payload, label }: Record<string, unknown>) => {
     return (
       <div className="card" style={{ padding: '8px 12px', fontSize: 12 }}>
         <p style={{ margin: 0, fontWeight: 600 }}>{String(label)}</p>
-        {(payload as Array<{name: string; value: number}>).map((p) => (
+        {(payload as Array<{ name: string; value: number }>).map((p) => (
           <p key={p.name} style={{ margin: '2px 0', color: 'var(--brand-500)' }}>
             {p.name}: {formatCOP(p.value)}
           </p>
@@ -54,13 +58,146 @@ const COPTooltip = ({ active, payload, label }: Record<string, unknown>) => {
   return null;
 };
 
+// ─── Tarjeta de cobro del día ─────────────────────────────────
+interface ClienteHoy {
+  _id: string;
+  prestamoId: string;
+  clienteId: string;
+  clienteNombre: string;
+  clienteCelular?: string;
+  modalidad: string;
+  cuotaDiaria: number;
+  saldoPendiente: number;
+  cuotasVencidas: number;
+  proximaCuota?: { fechaEsperada: string; monto: number; numero: number };
+  pagadoHoy: boolean;
+  montoCobradoHoy: number;
+}
+
+function TarjetaClienteHoy({ cliente }: { cliente: ClienteHoy }) {
+  const esMoroso = cliente.cuotasVencidas > 0;
+  return (
+    <div
+      className="animate-fade-in"
+      style={{
+        borderRadius: 'var(--radius-lg)',
+        border: `1.5px solid ${cliente.pagadoHoy
+          ? '#10b981'
+          : esMoroso ? '#ef4444' : 'var(--border)'}`,
+        background: cliente.pagadoHoy
+          ? 'rgb(16 185 129 / 0.06)'
+          : esMoroso ? 'rgb(239 68 68 / 0.04)' : 'var(--bg-card)',
+        padding: '14px 16px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+        opacity: cliente.pagadoHoy ? 0.75 : 1,
+        transition: 'all 0.3s',
+      }}
+    >
+      {/* Cabecera */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {cliente.pagadoHoy && <CheckCircle2 size={14} color="#10b981" />}
+            <p style={{
+              margin: 0, fontWeight: 700, fontSize: 14,
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              color: cliente.pagadoHoy ? '#10b981' : 'var(--text-primary)',
+              textDecoration: cliente.pagadoHoy ? 'line-through' : 'none',
+            }}>
+              {cliente.clienteNombre}
+            </p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3 }}>
+            <span style={{
+              fontSize: 11, fontWeight: 600, padding: '1px 7px', borderRadius: 12,
+              background: esMoroso ? 'rgb(239 68 68 / 0.15)' : 'rgb(99 102 241 / 0.12)',
+              color: esMoroso ? '#ef4444' : 'var(--brand-500)',
+            }}>
+              {esMoroso ? `⚠ ${cliente.cuotasVencidas} cuota${cliente.cuotasVencidas !== 1 ? 's' : ''} vencida${cliente.cuotasVencidas !== 1 ? 's' : ''}` : cliente.modalidad}
+            </span>
+            {cliente.clienteCelular && (
+              <a
+                href={`tel:${cliente.clienteCelular}`}
+                style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 3, textDecoration: 'none', fontSize: 11 }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Phone size={12} /> {cliente.clienteCelular}
+              </a>
+            )}
+          </div>
+        </div>
+
+        {/* Monto */}
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          {cliente.pagadoHoy ? (
+            <div>
+              <p style={{ margin: 0, fontSize: 11, color: '#10b981', fontWeight: 600 }}>Cobrado hoy</p>
+              <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: '#10b981' }}>
+                {formatCOP(cliente.montoCobradoHoy)}
+              </p>
+            </div>
+          ) : (
+            <div>
+              <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>Cuota</p>
+              <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: 'var(--text-primary)' }}>
+                {formatCOP(cliente.cuotaDiaria)}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Info cuota */}
+      {!cliente.pagadoHoy && cliente.proximaCuota && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          background: 'var(--bg-input)', borderRadius: 8, padding: '6px 10px', fontSize: 12,
+        }}>
+          <span style={{ color: 'var(--text-muted)' }}>
+            <Clock size={11} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+            Cuota #{cliente.proximaCuota.numero} · {formatFechaCO(cliente.proximaCuota.fechaEsperada)}
+          </span>
+          <span style={{ color: 'var(--text-muted)' }}>
+            Saldo: <strong style={{ color: 'var(--text-primary)' }}>{formatCOP(cliente.saldoPendiente)}</strong>
+          </span>
+        </div>
+      )}
+
+      {/* Botón cobrar */}
+      {!cliente.pagadoHoy && (
+        <Link
+          href={`/cobros/registrar?prestamoId=${cliente.prestamoId}`}
+          style={{ textDecoration: 'none' }}
+        >
+          <div style={{
+            background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
+            borderRadius: 'var(--radius-md)',
+            padding: '10px 14px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: 6, color: 'white', fontWeight: 700, fontSize: 13,
+            cursor: 'pointer',
+            boxShadow: '0 4px 12px rgb(79 70 229 / 0.25)',
+          }}>
+            <Zap size={14} />
+            Cobrar ahora
+          </div>
+        </Link>
+      )}
+    </div>
+  );
+}
+
+// ─── Página principal ─────────────────────────────────────────
 export default function DashboardPage() {
   const { usuario } = useAuthStore();
+  const queryClient = useQueryClient();
 
   const { data: kpis, isLoading } = useQuery({
     queryKey: ['dashboard-kpis'],
     queryFn: () => apiClient.get('/api/dashboard/kpis').then((r) => r.data.data),
-    refetchInterval: 60_000, // Refrescar cada minuto
+    refetchInterval: 60_000,
   });
 
   const { data: flujoCaja } = useQuery({
@@ -68,6 +205,25 @@ export default function DashboardPage() {
     queryFn: () => apiClient.get('/api/dashboard/flujo-caja?dias=14').then((r) => r.data.data),
     staleTime: 5 * 60 * 1000,
   });
+
+  const { data: clientesHoyData, isLoading: loadingHoy } = useQuery({
+    queryKey: ['cobrar-hoy'],
+    queryFn: () => apiClient.get('/api/dashboard/cobrar-hoy').then((r) => r.data.data),
+    refetchInterval: 30_000, // Refresca cada 30s
+  });
+
+  const clientesHoy: ClienteHoy[] = clientesHoyData ?? [];
+  const pendientes = clientesHoy.filter((c) => !c.pagadoHoy);
+  const pagados = clientesHoy.filter((c) => c.pagadoHoy);
+
+  // Refrescar lista al volver a la ventana
+  useEffect(() => {
+    const handleFocus = () => {
+      queryClient.invalidateQueries({ queryKey: ['cobrar-hoy'] });
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [queryClient]);
 
   if (isLoading) {
     return (
@@ -82,7 +238,6 @@ export default function DashboardPage() {
     timeZone: 'America/Bogota',
   });
 
-  // Formatear datos para gráfica
   const chartData = (flujoCaja?.cobros ?? []).map((d: { _id: { day: number; month: number }; cobros: number }) => ({
     dia: `${d._id.day}/${d._id.month}`,
     Cobros: d.cobros,
@@ -98,6 +253,88 @@ export default function DashboardPage() {
         <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--text-muted)', textTransform: 'capitalize' }}>
           {hoy}
         </p>
+      </div>
+
+      {/* ── Cobros de HOY ──────────────────────────────── */}
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {/* Cabecera con contador */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>
+              Cobros de hoy
+            </h2>
+            {!loadingHoy && clientesHoy.length > 0 && (
+              <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
+                <span style={{ color: '#10b981', fontWeight: 700 }}>{pagados.length}</span>
+                {' '}de{' '}
+                <span style={{ fontWeight: 700 }}>{clientesHoy.length}</span>
+                {' '}cobrados
+              </p>
+            )}
+          </div>
+          {/* Barra de progreso mini */}
+          {clientesHoy.length > 0 && (
+            <div style={{ textAlign: 'right' }}>
+              <div style={{
+                width: 60, height: 6, background: 'var(--border)',
+                borderRadius: 99, overflow: 'hidden',
+              }}>
+                <div style={{
+                  width: `${Math.round((pagados.length / clientesHoy.length) * 100)}%`,
+                  height: '100%', background: '#10b981', borderRadius: 99,
+                  transition: 'width 0.5s',
+                }} />
+              </div>
+              <p style={{ margin: '3px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+                {Math.round((pagados.length / clientesHoy.length) * 100)}%
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Contenido */}
+        {loadingHoy ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}>
+            <Loader2 size={24} className="animate-pulse-soft" color="var(--brand-500)" />
+          </div>
+        ) : clientesHoy.length === 0 ? (
+          <div style={{
+            textAlign: 'center', padding: '24px 16px',
+            color: 'var(--text-muted)', fontSize: 14,
+          }}>
+            <p style={{ fontSize: 28, margin: '0 0 8px' }}>🎉</p>
+            <p style={{ margin: 0, fontWeight: 600 }}>¡Todos al día!</p>
+            <p style={{ margin: '4px 0 0', fontSize: 12 }}>No hay cobros pendientes para hoy</p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {/* Pendientes primero */}
+            {pendientes.length > 0 && (
+              <>
+                {pendientes.length > 0 && pagados.length > 0 && (
+                  <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Pendientes ({pendientes.length})
+                  </p>
+                )}
+                {pendientes.map((c) => (
+                  <TarjetaClienteHoy key={c.prestamoId} cliente={c} />
+                ))}
+              </>
+            )}
+
+            {/* Ya pagados */}
+            {pagados.length > 0 && (
+              <>
+                <p style={{ margin: '4px 0 0', fontSize: 11, fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  ✓ Cobrados hoy ({pagados.length})
+                </p>
+                {pagados.map((c) => (
+                  <TarjetaClienteHoy key={c.prestamoId} cliente={c} />
+                ))}
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Acción rápida — Registrar cobro */}
