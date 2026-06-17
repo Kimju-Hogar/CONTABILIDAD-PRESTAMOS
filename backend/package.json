@@ -15,7 +15,8 @@
     "test:integration": "jest --testPathPattern=\\.integration\\.test\\.ts$ --runInBand",
     "test:watch": "jest --watch",
     "seed:admin": "tsx scripts/seed-admin.ts",
-    "seed:admin:reset": "tsx scripts/seed-admin.ts --reset"
+    "seed:admin:reset": "tsx scripts/seed-admin.ts --reset",
+    "migrate:cuotas": "tsx scripts/migrate-cuotas-diarias.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
