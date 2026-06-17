@@ -1,4 +1,4 @@
-import { addDays, addWeeks, addMonths, startOfDay } from 'date-fns';
+import { addDays, addWeeks, addMonths, startOfDay, getDay } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import mongoose from 'mongoose';
 import { PrestamoModel, IPrestamo, ICuota } from '../../models/Prestamo.model';
@@ -31,9 +31,10 @@ export function calcularPrestamo(
   const cuotaMonto = Math.ceil(cuotaBase / 100) * 100;
 
   // fechaFin según modalidad
+  // Para diaria: empieza día+1 y salta domingos → calculamos la fecha real de la última cuota
   const fechaFin = (() => {
     switch (modalidad) {
-      case 'diaria':    return addDays(fechaInicio, numeroCuotas - 1);
+      case 'diaria':    return calcularFechaFinDiaria(fechaInicio, numeroCuotas);
       case 'semanal':   return addWeeks(fechaInicio, numeroCuotas);
       case 'quincenal': return addDays(fechaInicio, numeroCuotas * 15);
       case 'mensual':   return addMonths(fechaInicio, numeroCuotas);
@@ -54,22 +55,57 @@ export function calcularPrestamo(
   };
 }
 
+// ─── Helpers de domingos ─────────────────────────────────────
+// Si la fecha cae en domingo (0), avanza al lunes
+function saltarDomingo(fecha: Date): Date {
+  return getDay(fecha) === 0 ? addDays(fecha, 1) : fecha;
+}
+
+// Calcula la fecha de la última cuota diaria (empieza día+1, salta domingos)
+function calcularFechaFinDiaria(fechaInicio: Date, numeroCuotas: number): Date {
+  let fecha = startOfDay(addDays(fechaInicio, 1));
+  let contadas = 0;
+  while (contadas < numeroCuotas) {
+    fecha = saltarDomingo(fecha);
+    contadas++;
+    if (contadas < numeroCuotas) fecha = addDays(fecha, 1);
+  }
+  return fecha;
+}
+
 function generarCuotas(
   fechaInicio: Date,
   numeroCuotas: number,
   cuotaMonto: number,
   modalidad: Modalidad
 ): ICuota[] {
+  if (modalidad === 'diaria') {
+    // Cuotas diarias: empiezan el día SIGUIENTE a la creación, saltan domingos
+    const cuotas: ICuota[] = [];
+    let fecha = startOfDay(addDays(fechaInicio, 1));
+    for (let i = 0; i < numeroCuotas; i++) {
+      fecha = saltarDomingo(fecha); // si es domingo, pasa al lunes
+      cuotas.push({
+        numero: i + 1,
+        fechaEsperada: fecha,
+        monto: cuotaMonto,
+        estado: 'pendiente' as const,
+      });
+      fecha = addDays(fecha, 1);
+    }
+    return cuotas;
+  }
+
+  // Para semanal, quincenal y mensual: empiezan en el primer período
   return Array.from({ length: numeroCuotas }, (_, i) => {
     const base = startOfDay(fechaInicio);
     const fechaEsperada = (() => {
       switch (modalidad) {
-        case 'diaria':    return addDays(base, i);
         case 'semanal':   return addWeeks(base, i + 1);
         case 'quincenal': return addDays(base, (i + 1) * 15);
         case 'mensual':   return addMonths(base, i + 1);
       }
-    })();
+    })()!;
 
     return {
       numero: i + 1,

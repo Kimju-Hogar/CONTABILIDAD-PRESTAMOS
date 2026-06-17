@@ -1,6 +1,26 @@
 // ─── Tipos y constantes ───────────────────────────────────────
 export type Modalidad = 'diaria' | 'semanal' | 'quincenal' | 'mensual';
 
+// Si la fecha cae en domingo (getDay()===0), avanza al lunes
+function saltarDomingo(fecha: Date): Date {
+  const d = new Date(fecha);
+  if (d.getDay() === 0) d.setDate(d.getDate() + 1);
+  return d;
+}
+
+// Calcula la fecha real de la última cuota diaria (comienza día+1, salta domingos)
+function calcularFechaFinDiaria(fechaInicio: Date, numeroCuotas: number): Date {
+  let fecha = new Date(fechaInicio);
+  fecha.setDate(fecha.getDate() + 1);
+  let contadas = 0;
+  while (contadas < numeroCuotas) {
+    fecha = saltarDomingo(fecha);
+    contadas++;
+    if (contadas < numeroCuotas) fecha = new Date(fecha.setDate(fecha.getDate() + 1));
+  }
+  return fecha;
+}
+
 export const INTERES_FIJO = 20;
 export const CUOTAS_DIARIAS = 115;
 export const CUOTAS_SEMANALES = 4;
@@ -41,6 +61,14 @@ export function calcularPrestamo(
   const papeleria = calcularPapeleria(capital);
   const montoDesembolsado = capital - papeleria;
 
+  // La descripción indica la primera cuota (día siguiente para diaria)
+  let descripcionFecha = '';
+  if (modalidad === 'diaria') {
+    const hoy = new Date();
+    const primera = saltarDomingo(new Date(hoy.setDate(hoy.getDate() + 1)));
+    descripcionFecha = ` (primer pago ${primera.toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short' })})`;
+  }
+
   return {
     numeroCuotas,
     totalInteres,
@@ -48,7 +76,7 @@ export function calcularPrestamo(
     cuotaMonto,
     papeleria,
     montoDesembolsado,
-    descripcion: `${numeroCuotas} ${LABEL_CUOTA[modalidad]} de ${formatCOP(cuotaMonto)}`,
+    descripcion: `${numeroCuotas} ${LABEL_CUOTA[modalidad]} de ${formatCOP(cuotaMonto)}${descripcionFecha}`,
   };
 }
 
