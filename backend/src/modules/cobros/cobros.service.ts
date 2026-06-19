@@ -227,6 +227,40 @@ export class CobrosService {
 
     return result ?? { totalMonto: 0, cantidad: 0, porTipo: [] };
   }
+  async eliminar(id: string, usuarioId: string, rol: string): Promise<void> {
+    if (rol !== 'admin') throw new ForbiddenError('Solo el administrador puede eliminar cobros');
+
+    const cobro = await CobroModel.findById(id);
+    if (!cobro) throw new NotFoundError('Cobro');
+
+    // Revertir el saldo del préstamo
+    const prestamo = await PrestamoModel.findById(cobro.prestamo);
+    if (prestamo) {
+      prestamo.saldoPendiente += cobro.monto;
+      prestamo.totalCobrado -= cobro.monto;
+      prestamo.ganancia = Math.max(0, prestamo.totalCobrado - prestamo.capital);
+
+      if (prestamo.estado === 'completado') {
+        prestamo.estado = 'activo';
+        await clientesRepository.incrementarPrestamosActivos(prestamo.cliente.toString(), 1);
+      }
+
+      // Revertir estado de cuotas aplicadas
+      for (const numCuota of cobro.cuotasAplicadas) {
+        const cuota = prestamo.cuotas.find((c) => c.numero === numCuota);
+        if (cuota) {
+          cuota.estado = 'pendiente';
+          cuota.fechaPago = undefined;
+          cuota.montoPagado = undefined;
+        }
+      }
+
+      await prestamo.save();
+    }
+
+    // Eliminar el cobro permanentemente
+    await CobroModel.deleteOne({ _id: id });
+  }
 }
 
 export const cobrosService = new CobrosService();

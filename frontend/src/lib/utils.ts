@@ -22,7 +22,7 @@ function calcularFechaFinDiaria(fechaInicio: Date, numeroCuotas: number): Date {
 }
 
 export const INTERES_FIJO = 20;
-export const CUOTAS_DIARIAS = 115;
+export const CUOTAS_DIARIAS = 30;
 export const CUOTAS_SEMANALES = 4;
 export const CUOTAS_QUINCENALES = 2;
 export const CUOTAS_MENSUALES = 1;

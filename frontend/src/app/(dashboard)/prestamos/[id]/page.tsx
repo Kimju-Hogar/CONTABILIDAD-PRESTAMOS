@@ -25,6 +25,7 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
   const queryClient = useQueryClient();
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showDeleteCobroModal, setShowDeleteCobroModal] = useState<string | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [motivo, setMotivo] = useState('');
   
@@ -70,6 +71,16 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
       setShowEditModal(false);
     },
     onError: (err: any) => alert(err.response?.data?.message || 'Error al editar'),
+  });
+
+  const { mutate: eliminarCobro, isPending: eliminandoCobro } = useMutation({
+    mutationFn: (cobroId: string) => apiClient.delete(`/api/cobros/${cobroId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cobros-prestamo', id] });
+      queryClient.invalidateQueries({ queryKey: ['prestamo', id] });
+      setShowDeleteCobroModal(null);
+    },
+    onError: (err: any) => alert(err.response?.data?.message || 'Error al eliminar cobro'),
   });
 
   const abrirEdicion = () => {
@@ -261,7 +272,7 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
             borderBottom: '1px solid var(--border)' }}>
             Cobros registrados
           </h2>
-          {cobros.slice(0, 15).map((c: { _id: string; monto: number; tipo: string; fecha: string; anulado: boolean }) => (
+        {cobros.slice(0, 20).map((c: { _id: string; monto: number; tipo: string; fecha: string; anulado: boolean }) => (
             <div key={c._id} className="list-item" style={{ cursor: 'default', opacity: c.anulado ? 0.5 : 1 }}>
               <CheckCircle2 size={18} color={c.anulado ? 'var(--text-muted)' : 'var(--success-500)'} />
               <div style={{ flex: 1 }}>
@@ -275,6 +286,19 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
                   {formatFechaHoraCO(c.fecha)} · {c.tipo}
                 </p>
               </div>
+              {!c.anulado && (
+                <button
+                  onClick={() => setShowDeleteCobroModal(c._id)}
+                  title="Eliminar cobro"
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: 'var(--danger-500)', padding: '4px', borderRadius: 6,
+                    display: 'flex', alignItems: 'center',
+                  }}
+                >
+                  <Trash2 size={15} />
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -297,15 +321,13 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
             <XCircle size={18} />
             Cancelar préstamo
           </button>
-          {prestamo.totalCobrado === 0 && (
-            <button
-              className="btn-danger"
-              onClick={() => setShowDeleteModal(true)}
-            >
-              <Trash2 size={18} />
-              Eliminar préstamo
-            </button>
-          )}
+          <button
+            className="btn-danger"
+            onClick={() => setShowDeleteModal(true)}
+          >
+            <Trash2 size={18} />
+            Eliminar préstamo
+          </button>
         </div>
       )}
 
@@ -458,6 +480,54 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
                 onClick={() => eliminar()}
               >
                 {eliminando ? <Loader2 size={16} className="animate-pulse-soft" /> : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal eliminar cobro ── */}
+      {showDeleteCobroModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgb(0 0 0 / 0.65)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 300, padding: '20px 16px',
+          }}
+          onClick={() => setShowDeleteCobroModal(null)}
+        >
+          <div
+            className="animate-fade-in"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--bg-card)',
+              borderRadius: 'var(--radius-xl)',
+              padding: '24px 20px',
+              width: '100%', maxWidth: 380,
+              textAlign: 'center',
+            }}
+          >
+            <div style={{
+              width: 52, height: 52, borderRadius: '50%',
+              background: 'rgb(239 68 68 / 0.1)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              margin: '0 auto 14px',
+            }}>
+              <Trash2 size={24} color="var(--danger-500)" />
+            </div>
+            <h3 style={{ margin: '0 0 8px', fontSize: 17, fontWeight: 700 }}>¿Eliminar cobro?</h3>
+            <p style={{ margin: '0 0 20px', fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              Se revertirá el saldo del préstamo. Las cuotas aplicadas volverán a estado pendiente. Esta acción es irreversible.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <button className="btn-secondary" onClick={() => setShowDeleteCobroModal(null)}>Cancelar</button>
+              <button
+                className="btn-danger"
+                disabled={eliminandoCobro}
+                onClick={() => eliminarCobro(showDeleteCobroModal)}
+              >
+                {eliminandoCobro ? <Loader2 size={16} className="animate-pulse-soft" /> : 'Eliminar'}
               </button>
             </div>
           </div>

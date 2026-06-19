@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 // ─── Constantes de negocio ────────────────────────────────────
 export const INTERES_FIJO = 20;             // 20% por defecto
-export const CUOTAS_DIARIAS = 115;          // modalidad diaria
+export const CUOTAS_DIARIAS = 30;           // modalidad diaria (más común)
 export const CUOTAS_SEMANALES = 4;          // modalidad semanal (1 mes)
 export const CUOTAS_QUINCENALES = 2;        // modalidad quincenal (1 mes = 2 quincenas)
 export const CUOTAS_MENSUALES = 1;          // modalidad mensual (mínimo 1 mes)

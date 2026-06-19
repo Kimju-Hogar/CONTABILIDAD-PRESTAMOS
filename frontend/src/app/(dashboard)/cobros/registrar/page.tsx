@@ -69,6 +69,7 @@ export default function RegistrarCobroPage() {
   const [montoVal, setMontoVal] = useState('');
   const [serverError, setServerError] = useState('');
   const [cuotasSeleccionadas, setCuotasSeleccionadas] = useState<Set<number>>(new Set());
+  const [montosPorCuota, setMontosPorCuota] = useState<Record<number, number>>({});
   const [mostrarCuotas, setMostrarCuotas] = useState(false);
   const [modoHistorico, setModoHistorico] = useState(false);
 
@@ -130,31 +131,44 @@ export default function RegistrarCobroPage() {
     }
   }, [tipoSeleccionado, prestamoSeleccionado, modoHistorico, cuotasSeleccionadas.size, setValue]);
 
-  // Al seleccionar/deseleccionar cuotas → actualizar monto sugerido (editable)
+  // Al seleccionar/deseleccionar cuotas → actualizar monto total (suma de montos por cuota)
   useEffect(() => {
     if (cuotasSeleccionadas.size === 0) return;
     const total = cuotasPendientes
       .filter((c) => cuotasSeleccionadas.has(c.numero))
-      .reduce((acc, c) => acc + c.monto, 0);
+      .reduce((acc, c) => acc + (montosPorCuota[c.numero] ?? c.monto), 0);
     setMontoVal(`$ ${total.toLocaleString('es-CO')}`);
     setValue('monto', String(total) as unknown as number);
-  }, [cuotasSeleccionadas, cuotasPendientes, setValue]);
+  }, [cuotasSeleccionadas, cuotasPendientes, montosPorCuota, setValue]);
 
   // Limpiar cuotas al cambiar préstamo
   useEffect(() => {
     setCuotasSeleccionadas(new Set());
+    setMontosPorCuota({});
   }, [prestamoId]);
 
-  const toggleCuota = useCallback((numero: number) => {
+  const toggleCuota = useCallback((numero: number, montoDefault: number) => {
     setCuotasSeleccionadas((prev) => {
       const next = new Set(prev);
-      if (next.has(numero)) next.delete(numero);
-      else next.add(numero);
+      if (next.has(numero)) {
+        next.delete(numero);
+      } else {
+        next.add(numero);
+        // Inicializar monto de la cuota si no existe
+        setMontosPorCuota((m) => ({ ...m, [numero]: m[numero] ?? montoDefault }));
+      }
       return next;
     });
   }, []);
 
+  const actualizarMontoCuota = (numero: number, valor: number) => {
+    setMontosPorCuota((m) => ({ ...m, [numero]: valor }));
+  };
+
   const seleccionarTodas = () => {
+    const nuevosMontos: Record<number, number> = { ...montosPorCuota };
+    cuotasPendientes.forEach((c) => { if (!nuevosMontos[c.numero]) nuevosMontos[c.numero] = c.monto; });
+    setMontosPorCuota(nuevosMontos);
     setCuotasSeleccionadas(new Set(cuotasPendientes.map((c) => c.numero)));
   };
 
@@ -401,57 +415,86 @@ export default function RegistrarCobroPage() {
                     const seleccionada = cuotasSeleccionadas.has(cuota.numero);
                     const esVencida = cuota.estado === 'vencida';
                     return (
-                      <label
+                      <div
                         key={cuota.numero}
                         style={{
-                          display: 'flex', alignItems: 'center', gap: 12,
-                          padding: '10px 12px',
                           borderRadius: 'var(--radius-md)',
                           border: `1.5px solid ${seleccionada ? 'var(--brand-500)' : 'var(--border)'}`,
                           background: seleccionada ? 'var(--brand-50)' : 'var(--bg-input)',
-                          cursor: 'pointer',
+                          overflow: 'hidden',
                           transition: 'all 0.15s',
                         }}
                       >
-                        <input
-                          type="checkbox"
-                          checked={seleccionada}
-                          onChange={() => toggleCuota(cuota.numero)}
-                          style={{ display: 'none' }}
-                        />
-                        {seleccionada
-                          ? <CheckSquare size={18} color="var(--brand-500)" style={{ flexShrink: 0 }} />
-                          : <Square size={18} color="var(--text-muted)" style={{ flexShrink: 0 }} />
-                        }
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: 13, fontWeight: 600 }}>Cuota #{cuota.numero}</span>
-                            <span style={{
-                              fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 12,
-                              background: ESTADO_COLOR[cuota.estado] + '22',
-                              color: ESTADO_COLOR[cuota.estado],
-                            }}>
-                              {ESTADO_LABEL[cuota.estado]}
-                            </span>
+                        {/* Fila principal: checkbox + info cuota */}
+                        <label
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 12,
+                            padding: '10px 12px', cursor: 'pointer',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={seleccionada}
+                            onChange={() => toggleCuota(cuota.numero, cuota.monto)}
+                            style={{ display: 'none' }}
+                          />
+                          {seleccionada
+                            ? <CheckSquare size={18} color="var(--brand-500)" style={{ flexShrink: 0 }} />
+                            : <Square size={18} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+                          }
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: 13, fontWeight: 600 }}>Cuota #{cuota.numero}</span>
+                              <span style={{
+                                fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 12,
+                                background: ESTADO_COLOR[cuota.estado] + '22',
+                                color: ESTADO_COLOR[cuota.estado],
+                              }}>
+                                {ESTADO_LABEL[cuota.estado]}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
+                              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                                {formatFechaCO(cuota.fechaEsperada)}
+                                {esVencida && <span style={{ color: '#ef4444', marginLeft: 4 }}>⚠</span>}
+                              </span>
+                              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+                                {formatCOP(cuota.monto)}
+                                {cuota.montoPagado && cuota.estado === 'parcial' && (
+                                  <span style={{ fontSize: 11, color: 'var(--warning-500)', marginLeft: 4 }}>
+                                    (pagado: {formatCOP(cuota.montoPagado)})
+                                  </span>
+                                )}
+                              </span>
+                            </div>
                           </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
-                            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                              {formatFechaCO(cuota.fechaEsperada)}
-                              {esVencida && <span style={{ color: '#ef4444', marginLeft: 4 }}>⚠</span>}
+                        </label>
+
+                        {/* Fila extra: input monto por cuota (solo si está seleccionada) */}
+                        {seleccionada && (
+                          <div style={{
+                            padding: '8px 12px 10px',
+                            borderTop: '1px solid var(--brand-200, #c7d2fe)',
+                            background: 'var(--brand-50)',
+                            display: 'flex', alignItems: 'center', gap: 10,
+                          }}>
+                            <span style={{ fontSize: 12, color: 'var(--brand-text)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                              Valor a pagar:
                             </span>
-                            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
-                              {formatCOP(cuota.monto)}
-                              {cuota.montoPagado && cuota.estado === 'parcial' && (
-                                <span style={{ fontSize: 11, color: 'var(--warning-500)', marginLeft: 4 }}>
-                                  (pagado: {formatCOP(cuota.montoPagado)})
-                                </span>
-                              )}
-                            </span>
+                            <input
+                              type="number"
+                              className="input-field"
+                              style={{ flex: 1, padding: '6px 10px', fontSize: 13, height: 'auto' }}
+                              value={montosPorCuota[cuota.numero] ?? cuota.monto}
+                              min={0}
+                              onChange={(e) => actualizarMontoCuota(cuota.numero, Number(e.target.value))}
+                            />
                           </div>
-                        </div>
-                      </label>
+                        )}
+                      </div>
                     );
                   })}
+
                 </div>
 
                 {cuotasSeleccionadas.size > 0 && (

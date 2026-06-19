@@ -22,4 +22,10 @@ router.post(
   cobrosController.anular.bind(cobrosController)
 );
 
+router.delete(
+  '/:id',
+  auditMiddleware({ accion: 'DELETE_COBRO', recurso: 'Cobro', getRecursoId: (r) => r.params['id'] }),
+  cobrosController.eliminar.bind(cobrosController)
+);
+
 export default router;

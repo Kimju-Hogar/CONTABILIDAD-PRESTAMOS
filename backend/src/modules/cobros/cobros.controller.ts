@@ -44,6 +44,13 @@ export class CobrosController {
       ResponseHelper.paginated(res, result.data, result.pagination);
     } catch (error) { next(error); }
   }
+
+  async eliminar(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      await cobrosService.eliminar(req.params['id']!, req.user!.sub, req.user!.rol);
+      ResponseHelper.success(res, null, 'Cobro eliminado exitosamente');
+    } catch (error) { next(error); }
+  }
 }
 
 export const cobrosController = new CobrosController();

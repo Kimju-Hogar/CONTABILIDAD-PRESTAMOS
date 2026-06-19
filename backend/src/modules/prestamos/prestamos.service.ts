@@ -2,6 +2,7 @@ import { addDays, addWeeks, addMonths, startOfDay, getDay } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import mongoose from 'mongoose';
 import { PrestamoModel, IPrestamo, ICuota } from '../../models/Prestamo.model';
+import { CobroModel } from '../../models/Cobro.model';
 import { clientesRepository } from '../clientes/clientes.repository';
 import { NotFoundError, AppError } from '../../shared/middleware/error.middleware';
 import { buildPagination } from '../../shared/utils/responses';
@@ -314,10 +315,15 @@ export class PrestamosService {
     const prestamo = await PrestamoModel.findById(id);
     if (!prestamo) throw new AppError('Préstamo no encontrado', 404);
 
-    if (prestamo.totalCobrado > 0) {
-      throw new AppError('No se puede eliminar un préstamo con pagos registrados. Cancela el préstamo en su lugar.', 400);
+    // Si tenía pagos, revertir contador del cliente si estaba activo
+    if (prestamo.estado === 'activo') {
+      await clientesRepository.incrementarPrestamosActivos(prestamo.cliente.toString(), -1);
     }
 
+    // Eliminar cobros asociados al préstamo
+    await CobroModel.deleteMany({ prestamo: id });
+
+    // Soft-delete del préstamo
     prestamo.deletedAt = new Date();
     prestamo.updatedBy = new mongoose.Types.ObjectId(usuarioId);
     await prestamo.save();
