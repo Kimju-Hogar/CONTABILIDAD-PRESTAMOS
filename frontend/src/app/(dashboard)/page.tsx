@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
   TrendingUp, Users, AlertTriangle, DollarSign, Plus, ArrowRight,
-  Loader2, Phone, CheckCircle2, Clock, Zap,
+  Loader2, Phone, CheckCircle2, Clock, Zap, ChevronRight,
 } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { formatCOP, formatFechaCO } from '@/lib/utils';
@@ -77,115 +77,132 @@ interface ClienteHoy {
 function TarjetaClienteHoy({ cliente }: { cliente: ClienteHoy }) {
   const esMoroso = cliente.cuotasVencidas > 0;
   return (
-    <div
-      className="animate-fade-in"
-      style={{
-        borderRadius: 'var(--radius-lg)',
-        border: `1.5px solid ${cliente.pagadoHoy
-          ? '#10b981'
-          : esMoroso ? '#ef4444' : 'var(--border)'}`,
-        background: cliente.pagadoHoy
-          ? 'rgb(16 185 129 / 0.06)'
-          : esMoroso ? 'rgb(239 68 68 / 0.04)' : 'var(--bg-card)',
-        padding: '14px 16px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 10,
-        opacity: cliente.pagadoHoy ? 0.75 : 1,
-        transition: 'all 0.3s',
-      }}
-    >
-      {/* Cabecera */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {cliente.pagadoHoy && <CheckCircle2 size={14} color="#10b981" />}
-            <p style={{
-              margin: 0, fontWeight: 700, fontSize: 14,
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-              color: cliente.pagadoHoy ? '#10b981' : 'var(--text-primary)',
-              textDecoration: cliente.pagadoHoy ? 'line-through' : 'none',
-            }}>
-              {cliente.clienteNombre}
-            </p>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3 }}>
-            <span style={{
-              fontSize: 11, fontWeight: 600, padding: '1px 7px', borderRadius: 12,
-              background: esMoroso ? 'rgb(239 68 68 / 0.15)' : 'rgb(99 102 241 / 0.12)',
-              color: esMoroso ? '#ef4444' : 'var(--brand-500)',
-            }}>
-              {esMoroso ? `⚠ ${cliente.cuotasVencidas} cuota${cliente.cuotasVencidas !== 1 ? 's' : ''} vencida${cliente.cuotasVencidas !== 1 ? 's' : ''}` : cliente.modalidad}
-            </span>
-            {cliente.clienteCelular && (
-              <a
-                href={`tel:${cliente.clienteCelular}`}
-                style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 3, textDecoration: 'none', fontSize: 11 }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Phone size={12} /> {cliente.clienteCelular}
-              </a>
-            )}
-          </div>
-        </div>
-
-        {/* Monto */}
-        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-          {cliente.pagadoHoy ? (
-            <div>
-              <p style={{ margin: 0, fontSize: 11, color: '#10b981', fontWeight: 600 }}>Cobrado hoy</p>
-              <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: '#10b981' }}>
-                {formatCOP(cliente.montoCobradoHoy)}
+    <Link href={`/prestamos/${cliente.prestamoId}`} style={{ textDecoration: 'none', display: 'block' }}>
+      <div
+        className="animate-fade-in"
+        style={{
+          borderRadius: 'var(--radius-lg)',
+          border: `1.5px solid ${cliente.pagadoHoy
+            ? '#10b981'
+            : esMoroso ? '#ef4444' : 'var(--border)'}`,
+          background: cliente.pagadoHoy
+            ? 'rgb(16 185 129 / 0.06)'
+            : esMoroso ? 'rgb(239 68 68 / 0.04)' : 'var(--bg-card)',
+          padding: '14px 16px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+          opacity: cliente.pagadoHoy ? 0.82 : 1,
+          transition: 'all 0.2s',
+          cursor: 'pointer',
+        }}
+      >
+        {/* Cabecera */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {cliente.pagadoHoy && <CheckCircle2 size={14} color="#10b981" />}
+              <p style={{
+                margin: 0, fontWeight: 700, fontSize: 14,
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                color: cliente.pagadoHoy ? '#10b981' : 'var(--text-primary)',
+                textDecoration: cliente.pagadoHoy ? 'line-through' : 'none',
+              }}>
+                {cliente.clienteNombre}
               </p>
             </div>
-          ) : (
-            <div>
-              <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>Cuota</p>
-              <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: 'var(--text-primary)' }}>
-                {formatCOP(cliente.cuotaDiaria)}
-              </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3 }}>
+              <span style={{
+                fontSize: 11, fontWeight: 600, padding: '1px 7px', borderRadius: 12,
+                background: esMoroso ? 'rgb(239 68 68 / 0.15)' : 'rgb(99 102 241 / 0.12)',
+                color: esMoroso ? '#ef4444' : 'var(--brand-500)',
+              }}>
+                {esMoroso ? `⚠ ${cliente.cuotasVencidas} cuota${cliente.cuotasVencidas !== 1 ? 's' : ''} vencida${cliente.cuotasVencidas !== 1 ? 's' : ''}` : cliente.modalidad}
+              </span>
+              {cliente.clienteCelular && (
+                <a
+                  href={`tel:${cliente.clienteCelular}`}
+                  style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 3, textDecoration: 'none', fontSize: 11 }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Phone size={12} /> {cliente.clienteCelular}
+                </a>
+              )}
             </div>
-          )}
-        </div>
-      </div>
+          </div>
 
-      {/* Info cuota */}
-      {!cliente.pagadoHoy && cliente.proximaCuota && (
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          background: 'var(--bg-input)', borderRadius: 8, padding: '6px 10px', fontSize: 12,
-        }}>
-          <span style={{ color: 'var(--text-muted)' }}>
-            <Clock size={11} style={{ marginRight: 4, verticalAlign: 'middle' }} />
-            Cuota #{cliente.proximaCuota.numero} · {formatFechaCO(cliente.proximaCuota.fechaEsperada)}
-          </span>
-          <span style={{ color: 'var(--text-muted)' }}>
-            Saldo: <strong style={{ color: 'var(--text-primary)' }}>{formatCOP(cliente.saldoPendiente)}</strong>
-          </span>
+          {/* Monto + flecha */}
+          <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div>
+              {cliente.pagadoHoy ? (
+                <div>
+                  <p style={{ margin: 0, fontSize: 11, color: '#10b981', fontWeight: 600 }}>Cobrado hoy</p>
+                  <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: '#10b981' }}>
+                    {formatCOP(cliente.montoCobradoHoy)}
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>Cuota</p>
+                  <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: 'var(--text-primary)' }}>
+                    {formatCOP(cliente.cuotaDiaria)}
+                  </p>
+                </div>
+              )}
+            </div>
+            <ChevronRight size={16} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+          </div>
         </div>
-      )}
 
-      {/* Botón cobrar */}
-      {!cliente.pagadoHoy && (
-        <Link
-          href={`/cobros/registrar?prestamoId=${cliente.prestamoId}`}
-          style={{ textDecoration: 'none' }}
-        >
+        {/* Info cuota / saldo */}
+        {!cliente.pagadoHoy && cliente.proximaCuota && (
           <div style={{
-            background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
-            borderRadius: 'var(--radius-md)',
-            padding: '10px 14px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            gap: 6, color: 'white', fontWeight: 700, fontSize: 13,
-            cursor: 'pointer',
-            boxShadow: '0 4px 12px rgb(79 70 229 / 0.25)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            background: 'var(--bg-input)', borderRadius: 8, padding: '6px 10px', fontSize: 12,
           }}>
-            <Zap size={14} />
-            Cobrar ahora
+            <span style={{ color: 'var(--text-muted)' }}>
+              <Clock size={11} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+              Cuota #{cliente.proximaCuota.numero} · {formatFechaCO(cliente.proximaCuota.fechaEsperada)}
+            </span>
+            <span style={{ color: 'var(--text-muted)' }}>
+              Saldo: <strong style={{ color: 'var(--text-primary)' }}>{formatCOP(cliente.saldoPendiente)}</strong>
+            </span>
           </div>
-        </Link>
-      )}
-    </div>
+        )}
+
+        {/* Si ya cobrado, mostrar saldo restante */}
+        {cliente.pagadoHoy && cliente.saldoPendiente > 0 && (
+          <div style={{
+            fontSize: 11, color: 'var(--text-muted)',
+            background: 'var(--bg-input)', borderRadius: 8, padding: '5px 10px',
+          }}>
+            Saldo restante: <strong style={{ color: 'var(--text-primary)' }}>{formatCOP(cliente.saldoPendiente)}</strong>
+          </div>
+        )}
+
+        {/* Botón cobrar (solo pendientes) */}
+        {!cliente.pagadoHoy && (
+          <Link
+            href={`/cobros/registrar?prestamoId=${cliente.prestamoId}`}
+            style={{ textDecoration: 'none' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{
+              background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
+              borderRadius: 'var(--radius-md)',
+              padding: '10px 14px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: 6, color: 'white', fontWeight: 700, fontSize: 13,
+              cursor: 'pointer',
+              boxShadow: '0 4px 12px rgb(79 70 229 / 0.25)',
+            }}>
+              <Zap size={14} />
+              Cobrar ahora
+            </div>
+          </Link>
+        )}
+      </div>
+    </Link>
   );
 }
 

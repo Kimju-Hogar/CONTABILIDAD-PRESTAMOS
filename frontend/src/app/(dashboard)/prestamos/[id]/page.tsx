@@ -3,7 +3,7 @@ import { useState, use } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { CheckCircle2, AlertTriangle, XCircle, Loader2, Phone, X, Trash2, Edit2 } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle, Loader2, Phone, X, Trash2, Edit2, ChevronDown, ChevronUp, Info } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { formatCOP, formatFechaCO, formatFechaHoraCO, porcentajeProgreso } from '@/lib/utils';
 
@@ -19,6 +19,16 @@ const LABEL_MODALIDAD: Record<string, string> = {
   mensual:   'cuota mensual',
 };
 
+interface CuotaDetalle {
+  numero: number; estado: string; fechaEsperada: string;
+  monto: number; fechaPago?: string; montoPagado?: number;
+}
+
+interface CobroItem {
+  _id: string; monto: number; tipo: string; fecha: string;
+  anulado: boolean; cuotasAplicadas?: number[];
+}
+
 export default function PrestamoDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
@@ -28,6 +38,8 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
   const [showDeleteCobroModal, setShowDeleteCobroModal] = useState<string | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [motivo, setMotivo] = useState('');
+  const [cuotaDetalle, setCuotaDetalle] = useState<CuotaDetalle | null>(null);
+  const [cobroExpandido, setCobroExpandido] = useState<string | null>(null);
   
   // Edit form state
   const [editData, setEditData] = useState<any>(null);
@@ -240,17 +252,29 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
 
       {/* ── Cuadrícula de cuotas ── */}
       <div className="card">
-        <h2 style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 700 }}>Estado de cuotas</h2>
+        <h2 style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 700 }}>Estado de cuotas
+          <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400, marginLeft: 8 }}>
+            (toca una cuota para ver detalles)
+          </span>
+        </h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 4 }}>
-          {(prestamo.cuotas ?? []).map((cuota: { numero: number; estado: string }) => (
+          {(prestamo.cuotas ?? []).map((cuota: CuotaDetalle) => (
             <div
               key={cuota.numero}
               title={`Cuota ${cuota.numero}: ${cuota.estado}`}
-              style={{ height: 14, borderRadius: 2, background: CUOTA_COLORS[cuota.estado] ?? 'var(--border)' }}
+              onClick={() => setCuotaDetalle(cuota)}
+              style={{
+                height: 18, borderRadius: 3,
+                background: CUOTA_COLORS[cuota.estado] ?? 'var(--border)',
+                cursor: 'pointer', position: 'relative',
+                transition: 'transform 0.1s, opacity 0.1s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.transform = 'scaleY(1.3)'; e.currentTarget.style.opacity = '0.85'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = 'scaleY(1)'; e.currentTarget.style.opacity = '1'; }}
             />
           ))}
         </div>
-        <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 16, marginTop: 10, flexWrap: 'wrap' }}>
           {[
             { label: 'Pagada',   color: 'var(--success-500)' },
             { label: 'Vencida',  color: 'var(--danger-500)' },
@@ -272,32 +296,97 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
             borderBottom: '1px solid var(--border)' }}>
             Cobros registrados
           </h2>
-        {cobros.slice(0, 20).map((c: { _id: string; monto: number; tipo: string; fecha: string; anulado: boolean }) => (
-            <div key={c._id} className="list-item" style={{ cursor: 'default', opacity: c.anulado ? 0.5 : 1 }}>
-              <CheckCircle2 size={18} color={c.anulado ? 'var(--text-muted)' : 'var(--success-500)'} />
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 14, fontWeight: 600 }}>{formatCOP(c.monto)}</span>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: c.anulado ? 'var(--danger-500)' : 'var(--success-600)' }}>
-                    {c.anulado ? 'Anulado' : `+${formatCOP(c.monto)}`}
-                  </span>
+          {cobros.slice(0, 20).map((c: CobroItem) => (
+            <div key={c._id} style={{ opacity: c.anulado ? 0.5 : 1, borderBottom: '1px solid var(--border)' }}>
+              {/* Fila principal */}
+              <div
+                className="list-item"
+                style={{ cursor: 'pointer' }}
+                onClick={() => !c.anulado && setCobroExpandido(cobroExpandido === c._id ? null : c._id)}
+              >
+                <CheckCircle2 size={18} color={c.anulado ? 'var(--text-muted)' : 'var(--success-500)'} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 14, fontWeight: 700 }}>{formatCOP(c.monto)}</span>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: c.anulado ? 'var(--danger-500)' : 'var(--success-600)' }}>
+                      {c.anulado ? 'Anulado' : `+${formatCOP(c.monto)}`}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+                    <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>
+                      {formatFechaHoraCO(c.fecha)} · {c.tipo}
+                    </p>
+                    {c.cuotasAplicadas && c.cuotasAplicadas.length > 0 && (
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, padding: '1px 6px',
+                        background: 'rgb(99 102 241 / 0.15)', color: 'var(--brand-text)',
+                        borderRadius: 10,
+                      }}>
+                        {c.cuotasAplicadas.length} cuota{c.cuotasAplicadas.length !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
-                  {formatFechaHoraCO(c.fecha)} · {c.tipo}
-                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {!c.anulado && (
+                    <>
+                      {c.cuotasAplicadas && c.cuotasAplicadas.length > 0 && (
+                        cobroExpandido === c._id
+                          ? <ChevronUp size={15} color="var(--text-muted)" />
+                          : <ChevronDown size={15} color="var(--text-muted)" />
+                      )}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setShowDeleteCobroModal(c._id); }}
+                        title="Eliminar cobro"
+                        style={{
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          color: 'var(--danger-500)', padding: '4px', borderRadius: 6,
+                          display: 'flex', alignItems: 'center',
+                        }}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
-              {!c.anulado && (
-                <button
-                  onClick={() => setShowDeleteCobroModal(c._id)}
-                  title="Eliminar cobro"
-                  style={{
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    color: 'var(--danger-500)', padding: '4px', borderRadius: 6,
-                    display: 'flex', alignItems: 'center',
-                  }}
-                >
-                  <Trash2 size={15} />
-                </button>
+
+              {/* Detalle expandido: cuotas aplicadas */}
+              {cobroExpandido === c._id && c.cuotasAplicadas && c.cuotasAplicadas.length > 0 && (
+                <div style={{
+                  background: 'var(--bg-input)', padding: '10px 16px',
+                  borderTop: '1px solid var(--border)',
+                }} className="animate-fade-in">
+                  <p style={{ margin: '0 0 8px', fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
+                    Cuotas aplicadas en este cobro:
+                  </p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {c.cuotasAplicadas.sort((a, b) => a - b).map((num) => {
+                      const cuota = prestamo.cuotas?.find((q: CuotaDetalle) => q.numero === num);
+                      return (
+                        <div
+                          key={num}
+                          onClick={() => cuota && setCuotaDetalle(cuota)}
+                          style={{
+                            background: 'var(--bg-card)',
+                            border: '1px solid var(--success-500)',
+                            borderRadius: 8, padding: '4px 10px',
+                            fontSize: 12, fontWeight: 700,
+                            color: 'var(--success-600)', cursor: 'pointer',
+                          }}
+                          title="Ver detalles de cuota"
+                        >
+                          #{num}
+                          {cuota?.fechaPago && (
+                            <span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-muted)', marginLeft: 4 }}>
+                              {formatFechaCO(cuota.fechaPago)}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
             </div>
           ))}
@@ -328,6 +417,118 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
             <Trash2 size={18} />
             Eliminar préstamo
           </button>
+        </div>
+      )}
+
+      {/* ── Modal detalle de cuota ── */}
+      {cuotaDetalle && (
+        <div
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgb(0 0 0 / 0.65)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 400, padding: '20px 16px',
+          }}
+          onClick={() => setCuotaDetalle(null)}
+        >
+          <div
+            className="animate-fade-in"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--bg-card)',
+              borderRadius: 'var(--radius-xl)',
+              padding: '24px 20px',
+              width: '100%', maxWidth: 360,
+              position: 'relative',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setCuotaDetalle(null)}
+              style={{
+                position: 'absolute', top: 16, right: 16,
+                background: 'var(--bg-input)', border: 'none',
+                borderRadius: 'var(--radius-sm)', width: 32, height: 32,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', color: 'var(--text-muted)',
+              }}
+            >
+              <X size={16} />
+            </button>
+
+            {/* Color indicator */}
+            <div style={{
+              width: 48, height: 8, borderRadius: 4,
+              background: CUOTA_COLORS[cuotaDetalle.estado] ?? 'var(--border)',
+              margin: '0 0 14px',
+            }} />
+
+            <h3 style={{ margin: '0 0 4px', fontSize: 20, fontWeight: 800 }}>
+              Cuota #{cuotaDetalle.numero}
+            </h3>
+            <span style={{
+              fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
+              background: (CUOTA_COLORS[cuotaDetalle.estado] ?? 'var(--border)') + '22',
+              color: CUOTA_COLORS[cuotaDetalle.estado] ?? 'var(--text-muted)',
+              textTransform: 'uppercase', letterSpacing: '0.04em',
+            }}>
+              {cuotaDetalle.estado}
+            </span>
+
+            <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {[
+                { label: 'Fecha esperada', value: formatFechaCO(cuotaDetalle.fechaEsperada) },
+                { label: 'Monto', value: formatCOP(cuotaDetalle.monto), hi: true },
+                ...(cuotaDetalle.fechaPago ? [{ label: 'Fecha de pago', value: formatFechaCO(cuotaDetalle.fechaPago) }] : []),
+                ...(cuotaDetalle.montoPagado != null && cuotaDetalle.montoPagado !== cuotaDetalle.monto
+                  ? [{ label: 'Monto pagado', value: formatCOP(cuotaDetalle.montoPagado), hi: true }]
+                  : []),
+              ].map(({ label, value, hi }) => (
+                <div key={label} style={{
+                  display: 'flex', justifyContent: 'space-between',
+                  padding: '8px 0', borderBottom: '1px solid var(--border)',
+                }}>
+                  <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{label}</span>
+                  <span style={{ fontSize: hi ? 15 : 13, fontWeight: hi ? 800 : 600, color: 'var(--text-primary)' }}>
+                    {value}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Si está pagada, ofrecer eliminar el cobro correspondiente */}
+            {(cuotaDetalle.estado === 'pagada' || cuotaDetalle.estado === 'parcial') && cobros && (() => {
+              const cobroAsociado = cobros.find((c: CobroItem) =>
+                !c.anulado && c.cuotasAplicadas?.includes(cuotaDetalle.numero)
+              );
+              if (!cobroAsociado) return null;
+              return (
+                <div style={{ marginTop: 20 }}>
+                  <p style={{ margin: '0 0 10px', fontSize: 12, color: 'var(--text-muted)' }}>
+                    Esta cuota fue pagada en el cobro del {formatFechaHoraCO(cobroAsociado.fecha)} ({formatCOP(cobroAsociado.monto)} total).
+                  </p>
+                  <button
+                    className="btn-danger"
+                    style={{ width: '100%', fontSize: 13 }}
+                    onClick={() => {
+                      setCuotaDetalle(null);
+                      setShowDeleteCobroModal(cobroAsociado._id);
+                    }}
+                  >
+                    <Trash2 size={15} /> Eliminar este cobro y revertir cuota
+                  </button>
+                </div>
+              );
+            })()}
+
+            <button
+              className="btn-secondary"
+              style={{ width: '100%', marginTop: 14, fontSize: 13 }}
+              onClick={() => setCuotaDetalle(null)}
+            >
+              Cerrar
+            </button>
+          </div>
         </div>
       )}
 

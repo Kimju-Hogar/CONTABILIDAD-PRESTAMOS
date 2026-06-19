@@ -410,106 +410,95 @@ export default function RegistrarCobroPage() {
                 </div>
 
                 {/* Lista de cuotas */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflowY: 'auto' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 340, overflowY: 'auto' }}>
                   {cuotasPendientes.map((cuota) => {
                     const seleccionada = cuotasSeleccionadas.has(cuota.numero);
                     const esVencida = cuota.estado === 'vencida';
                     return (
-                      <div
+                      <label
                         key={cuota.numero}
                         style={{
+                          display: 'flex', alignItems: 'center', gap: 12,
+                          padding: '10px 12px',
                           borderRadius: 'var(--radius-md)',
-                          border: `1.5px solid ${seleccionada ? 'var(--brand-500)' : 'var(--border)'}`,
-                          background: seleccionada ? 'var(--brand-50)' : 'var(--bg-input)',
-                          overflow: 'hidden',
+                          border: `1.5px solid ${seleccionada ? 'var(--brand-500)' : esVencida ? '#ef444444' : 'var(--border)'}`,
+                          background: seleccionada ? 'rgb(99 102 241 / 0.08)' : 'var(--bg-input)',
+                          cursor: 'pointer',
                           transition: 'all 0.15s',
                         }}
                       >
-                        {/* Fila principal: checkbox + info cuota */}
-                        <label
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 12,
-                            padding: '10px 12px', cursor: 'pointer',
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={seleccionada}
-                            onChange={() => toggleCuota(cuota.numero, cuota.monto)}
-                            style={{ display: 'none' }}
-                          />
-                          {seleccionada
-                            ? <CheckSquare size={18} color="var(--brand-500)" style={{ flexShrink: 0 }} />
-                            : <Square size={18} color="var(--text-muted)" style={{ flexShrink: 0 }} />
-                          }
-                          <div style={{ flex: 1 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <span style={{ fontSize: 13, fontWeight: 600 }}>Cuota #{cuota.numero}</span>
-                              <span style={{
-                                fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 12,
-                                background: ESTADO_COLOR[cuota.estado] + '22',
-                                color: ESTADO_COLOR[cuota.estado],
-                              }}>
-                                {ESTADO_LABEL[cuota.estado]}
-                              </span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
-                              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                                {formatFechaCO(cuota.fechaEsperada)}
-                                {esVencida && <span style={{ color: '#ef4444', marginLeft: 4 }}>⚠</span>}
-                              </span>
-                              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
-                                {formatCOP(cuota.monto)}
-                                {cuota.montoPagado && cuota.estado === 'parcial' && (
-                                  <span style={{ fontSize: 11, color: 'var(--warning-500)', marginLeft: 4 }}>
-                                    (pagado: {formatCOP(cuota.montoPagado)})
-                                  </span>
-                                )}
-                              </span>
-                            </div>
-                          </div>
-                        </label>
+                        <input
+                          type="checkbox"
+                          checked={seleccionada}
+                          onChange={() => toggleCuota(cuota.numero, cuota.monto)}
+                          style={{ display: 'none' }}
+                        />
+                        {seleccionada
+                          ? <CheckSquare size={18} color="var(--brand-500)" style={{ flexShrink: 0 }} />
+                          : <Square size={18} color={esVencida ? '#ef4444' : 'var(--text-muted)'} style={{ flexShrink: 0 }} />
+                        }
 
-                        {/* Fila extra: input monto por cuota (solo si está seleccionada) */}
-                        {seleccionada && (
-                          <div style={{
-                            padding: '8px 12px 10px',
-                            borderTop: '1px solid var(--brand-200, #c7d2fe)',
-                            background: 'var(--brand-50)',
-                            display: 'flex', alignItems: 'center', gap: 10,
-                          }}>
-                            <span style={{ fontSize: 12, color: 'var(--brand-text)', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                              Valor a pagar:
+                        {/* Info izquierda */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 13, fontWeight: 700 }}>#{cuota.numero}</span>
+                            <span style={{
+                              fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10,
+                              background: ESTADO_COLOR[cuota.estado] + '25',
+                              color: ESTADO_COLOR[cuota.estado],
+                            }}>
+                              {ESTADO_LABEL[cuota.estado]}
                             </span>
-                            <input
-                              type="number"
-                              className="input-field"
-                              style={{ flex: 1, padding: '6px 10px', fontSize: 13, height: 'auto' }}
-                              value={montosPorCuota[cuota.numero] ?? cuota.monto}
-                              min={0}
-                              onChange={(e) => actualizarMontoCuota(cuota.numero, Number(e.target.value))}
-                            />
                           </div>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                            {formatFechaCO(cuota.fechaEsperada)}
+                          </span>
+                        </div>
+
+                        {/* Monto: editable si seleccionada, texto si no */}
+                        {seleccionada ? (
+                          <input
+                            type="number"
+                            onClick={(e) => e.stopPropagation()}
+                            value={montosPorCuota[cuota.numero] ?? cuota.monto}
+                            min={0}
+                            onChange={(e) => actualizarMontoCuota(cuota.numero, Number(e.target.value))}
+                            style={{
+                              width: 88, textAlign: 'right', fontWeight: 700, fontSize: 13,
+                              background: 'var(--bg-card)', border: '1.5px solid var(--brand-500)',
+                              borderRadius: 8, padding: '4px 8px', color: 'var(--brand-text)',
+                              outline: 'none',
+                            }}
+                          />
+                        ) : (
+                          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                            {formatCOP(cuota.monto)}
+                            {cuota.montoPagado && cuota.estado === 'parcial' && (
+                              <span style={{ fontSize: 10, color: 'var(--warning-500)', display: 'block', textAlign: 'right' }}>
+                                pag: {formatCOP(cuota.montoPagado)}
+                              </span>
+                            )}
+                          </span>
                         )}
-                      </div>
+                      </label>
                     );
                   })}
-
                 </div>
 
                 {cuotasSeleccionadas.size > 0 && (
                   <div style={{
-                    background: 'var(--bg-input)', borderRadius: 'var(--radius-md)', padding: '8px 12px',
+                    background: 'rgb(99 102 241 / 0.10)', border: '1.5px solid var(--brand-500)',
+                    borderRadius: 'var(--radius-md)', padding: '10px 14px',
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                   }}>
-                    <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                      Total sugerido ({cuotasSeleccionadas.size} cuota{cuotasSeleccionadas.size !== 1 ? 's' : ''})
+                    <span style={{ fontSize: 13, color: 'var(--brand-text)', fontWeight: 600 }}>
+                      {cuotasSeleccionadas.size} cuota{cuotasSeleccionadas.size !== 1 ? 's' : ''} seleccionadas
                     </span>
-                    <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--brand-text)' }}>
+                    <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--brand-text)' }}>
                       {formatCOP(
                         cuotasPendientes
                           .filter((c) => cuotasSeleccionadas.has(c.numero))
-                          .reduce((acc, c) => acc + c.monto, 0)
+                          .reduce((acc, c) => acc + (montosPorCuota[c.numero] ?? c.monto), 0)
                       )}
                     </span>
                   </div>
