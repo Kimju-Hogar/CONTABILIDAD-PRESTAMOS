@@ -47,7 +47,7 @@ export class CobrosController {
 
   async eliminar(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      await cobrosService.eliminar(req.params['id']!, req.user!.sub, req.user!.rol);
+      await cobrosService.eliminar(req.params['id']!, req.user!.rol);
       ResponseHelper.success(res, null, 'Cobro eliminado exitosamente');
     } catch (error) { next(error); }
   }

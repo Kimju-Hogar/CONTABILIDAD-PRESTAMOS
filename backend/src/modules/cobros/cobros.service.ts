@@ -227,7 +227,7 @@ export class CobrosService {
 
     return result ?? { totalMonto: 0, cantidad: 0, porTipo: [] };
   }
-  async eliminar(id: string, usuarioId: string, rol: string): Promise<void> {
+  async eliminar(id: string, rol: string): Promise<void> {
     if (rol !== 'admin') throw new ForbiddenError('Solo el administrador puede eliminar cobros');
 
     const cobro = await CobroModel.findById(id);
