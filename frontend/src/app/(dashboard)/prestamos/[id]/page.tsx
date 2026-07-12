@@ -219,7 +219,8 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
         </p>
 
         {/* Desglose de ganancia cuando hay papelería retirada */}
-        {prestamo.papeleriaRetirada && (prestamo.ganancia > 0 || (prestamo.totalCobrado - prestamo.capital) > 0) && (
+        {/* Desglose de ganancia cuando hay papelería retirada */}
+        {prestamo.papeleriaRetirada && (
           <div style={{
             marginTop: 14, padding: '12px 14px',
             borderRadius: 'var(--radius-md)',
@@ -227,27 +228,26 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
             border: '1px solid var(--border)',
           }}>
             <p style={{ margin: '0 0 10px', fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Desglose de ganancias
+              Impacto de Papelería Retirada
             </p>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Ganancia bruta (interés cobrado)</span>
+              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Papelería (tu ahorro como cobrador)</span>
               <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--success-500)' }}>
-                +{formatCOP(prestamo.ganancia + (prestamo.papeleria ?? 0))}
+                +{formatCOP(prestamo.papeleria ?? 0)}
               </span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Papelería retirada (cobradores)</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--danger-500)' }}>
-                −{formatCOP(prestamo.papeleria ?? 0)}
+              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Ganancia neta del sistema (interés)</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--brand-text)' }}>
+                {formatCOP(prestamo.ganancia)}
               </span>
             </div>
             <div style={{
               display: 'flex', justifyContent: 'space-between',
-              paddingTop: 8, borderTop: '1.5px solid var(--border)',
+              paddingTop: 8, borderTop: '1px dashed var(--border)',
             }}>
-              <span style={{ fontSize: 14, fontWeight: 800 }}>Tu ganancia neta</span>
-              <span style={{ fontSize: 17, fontWeight: 900, color: 'var(--brand-text)' }}>
-                {formatCOP(prestamo.ganancia)}
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                * La papelería ya fue descontada de la ganancia final del sistema
               </span>
             </div>
           </div>
