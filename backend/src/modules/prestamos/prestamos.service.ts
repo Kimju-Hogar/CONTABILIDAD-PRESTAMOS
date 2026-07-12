@@ -344,6 +344,8 @@ export class PrestamosService {
 
     prestamo.papeleriaRetirada = true;
     prestamo.papeleriaRetiradaEn = new Date();
+    // Descontar la papelería de la ganancia acumulada: ese dinero no es del dueño
+    prestamo.ganancia = Math.max(0, prestamo.ganancia - prestamo.papeleria);
     prestamo.updatedBy = new mongoose.Types.ObjectId(usuarioId);
     await prestamo.save();
 
