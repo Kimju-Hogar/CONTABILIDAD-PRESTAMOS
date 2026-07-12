@@ -42,4 +42,11 @@ router.delete(
   prestamosController.eliminar.bind(prestamosController)
 );
 
+router.post(
+  '/:id/retirar-papeleria',
+  adminOnly,
+  auditMiddleware({ accion: 'RETIRAR_PAPELERIA', recurso: 'Prestamo', getRecursoId: (r) => r.params['id'] }),
+  prestamosController.retirarPapeleria.bind(prestamosController)
+);
+
 export default router;

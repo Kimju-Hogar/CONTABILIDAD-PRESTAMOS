@@ -3,7 +3,7 @@ import { useState, use } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { CheckCircle2, AlertTriangle, XCircle, Loader2, Phone, X, Trash2, Edit2, ChevronDown, ChevronUp, Info } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle, Loader2, Phone, X, Trash2, Edit2, ChevronDown, ChevronUp, Info, PackageCheck } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { formatCOP, formatFechaCO, formatFechaHoraCO, porcentajeProgreso } from '@/lib/utils';
 
@@ -37,6 +37,7 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showDeleteCobroModal, setShowDeleteCobroModal] = useState<string | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showPapeleriaModal, setShowPapeleriaModal] = useState(false);
   const [motivo, setMotivo] = useState('');
   const [cuotaDetalle, setCuotaDetalle] = useState<CuotaDetalle | null>(null);
   const [cobroExpandido, setCobroExpandido] = useState<string | null>(null);
@@ -83,6 +84,16 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
       setShowEditModal(false);
     },
     onError: (err: any) => alert(err.response?.data?.message || 'Error al editar'),
+  });
+
+  const { mutate: retirarPapeleria, isPending: retirando } = useMutation({
+    mutationFn: () => apiClient.post(`/api/prestamos/${id}/retirar-papeleria`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['prestamo', id] });
+      queryClient.invalidateQueries({ queryKey: ['prestamos'] });
+      setShowPapeleriaModal(false);
+    },
+    onError: (err: any) => alert(err.response?.data?.message || 'Error al retirar papelería'),
   });
 
   const { mutate: eliminarCobro, isPending: eliminandoCobro } = useMutation({
@@ -233,6 +244,39 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
             }}>{value}</span>
           </div>
         ))}
+
+        {/* Estado de papelería */}
+        <div style={{
+          marginTop: 14, padding: '12px 14px',
+          borderRadius: 'var(--radius-md)',
+          background: prestamo.papeleriaRetirada
+            ? 'rgb(34 197 94 / 0.1)'
+            : 'rgb(245 158 11 / 0.08)',
+          border: `1.5px solid ${
+            prestamo.papeleriaRetirada ? 'rgb(34 197 94 / 0.4)' : 'rgb(245 158 11 / 0.35)'
+          }`,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <PackageCheck size={18} color={prestamo.papeleriaRetirada ? 'var(--success-500)' : 'rgb(245 158 11)'} />
+            <div>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 700,
+                color: prestamo.papeleriaRetirada ? 'var(--success-500)' : 'rgb(217 119 6)' }}>
+                {prestamo.papeleriaRetirada ? '✓ Papelería retirada' : 'Papelería pendiente de retirar'}
+              </p>
+              {prestamo.papeleriaRetirada && prestamo.papeleriaRetiradaEn && (
+                <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+                  {formatFechaHoraCO(prestamo.papeleriaRetiradaEn)}
+                </p>
+              )}
+              {!prestamo.papeleriaRetirada && (
+                <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+                  {formatCOP(prestamo.papeleria ?? 0)} disponibles para retirar
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
 
         {/* Contadores de cuotas */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginTop: 14 }}>
@@ -402,6 +446,23 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
           <Link href={`/prestamos/nuevo?refinanciarId=${id}`}>
             <button className="btn-secondary">Refinanciar préstamo</button>
           </Link>
+          {!prestamo.papeleriaRetirada && (prestamo.papeleria ?? 0) > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowPapeleriaModal(true)}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                padding: '13px 20px', borderRadius: 'var(--radius-md)',
+                border: '1.5px solid rgb(245 158 11 / 0.6)',
+                background: 'rgb(245 158 11 / 0.08)',
+                color: 'rgb(217 119 6)', fontWeight: 700, fontSize: 15,
+                cursor: 'pointer', width: '100%',
+              }}
+            >
+              <PackageCheck size={18} />
+              Retirar Papelería ({formatCOP(prestamo.papeleria ?? 0)})
+            </button>
+          )}
           <button
             className="btn-danger"
             onClick={() => setShowCancelModal(true)}
@@ -416,6 +477,27 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
           >
             <Trash2 size={18} />
             Eliminar préstamo
+          </button>
+        </div>
+      )}
+
+      {/* Botón retirar papelería también en préstamos completados */}
+      {!isActivo && prestamo.estado === 'completado' && !prestamo.papeleriaRetirada && (prestamo.papeleria ?? 0) > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <button
+            type="button"
+            onClick={() => setShowPapeleriaModal(true)}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              padding: '13px 20px', borderRadius: 'var(--radius-md)',
+              border: '1.5px solid rgb(245 158 11 / 0.6)',
+              background: 'rgb(245 158 11 / 0.08)',
+              color: 'rgb(217 119 6)', fontWeight: 700, fontSize: 15,
+              cursor: 'pointer', width: '100%',
+            }}
+          >
+            <PackageCheck size={18} />
+            Retirar Papelería ({formatCOP(prestamo.papeleria ?? 0)})
           </button>
         </div>
       )}
@@ -804,6 +886,111 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
               <button className="btn-secondary" onClick={() => setShowEditModal(false)}>Cancelar</button>
               <button className="btn-primary" disabled={editando} onClick={() => editar(editData)}>
                 {editando ? <Loader2 size={16} className="animate-pulse-soft" /> : 'Guardar Cambios'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Retirar Papelería ── */}
+      {showPapeleriaModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgb(0 0 0 / 0.65)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 300, padding: '20px 16px',
+          }}
+          onClick={() => setShowPapeleriaModal(false)}
+        >
+          <div
+            className="animate-fade-in"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--bg-card)',
+              borderRadius: 'var(--radius-xl)',
+              padding: '28px 24px',
+              width: '100%', maxWidth: 400,
+              position: 'relative', textAlign: 'center',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setShowPapeleriaModal(false)}
+              style={{
+                position: 'absolute', top: 16, right: 16,
+                background: 'var(--bg-input)', border: 'none',
+                borderRadius: 'var(--radius-sm)', width: 32, height: 32,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', color: 'var(--text-muted)',
+              }}
+            >
+              <X size={16} />
+            </button>
+
+            {/* Ícono */}
+            <div style={{
+              width: 64, height: 64, borderRadius: '50%',
+              background: 'rgb(245 158 11 / 0.12)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              margin: '0 auto 18px',
+            }}>
+              <PackageCheck size={32} color="rgb(217 119 6)" />
+            </div>
+
+            <h3 style={{ margin: '0 0 6px', fontSize: 20, fontWeight: 800 }}>
+              Retirar Papelería
+            </h3>
+            <p style={{ margin: '0 0 20px', fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+              Vas a registrar que retiraste la papelería de este préstamo.
+              Este monto es tuyo y queda separado de lo cobrado por el cobrador.
+            </p>
+
+            {/* Detalle del monto */}
+            <div style={{
+              background: 'var(--bg-input)', borderRadius: 'var(--radius-md)',
+              padding: '16px', marginBottom: 20,
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Préstamo de</span>
+                <span style={{ fontSize: 13, fontWeight: 700 }}>{prestamo.cliente?.nombre}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Capital original</span>
+                <span style={{ fontSize: 13, fontWeight: 700 }}>{formatCOP(prestamo.capital)}</span>
+              </div>
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                paddingTop: 10, borderTop: '1px solid var(--border)',
+              }}>
+                <span style={{ fontSize: 15, fontWeight: 700, color: 'rgb(217 119 6)' }}>Papelería a retirar</span>
+                <span style={{ fontSize: 20, fontWeight: 900, color: 'rgb(217 119 6)' }}>
+                  {formatCOP(prestamo.papeleria ?? 0)}
+                </span>
+              </div>
+            </div>
+
+            <p style={{ margin: '0 0 18px', fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+              ⚠️ Esta acción no se puede deshacer. El saldo del cliente no cambia.
+            </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <button className="btn-secondary" onClick={() => setShowPapeleriaModal(false)}>
+                Cancelar
+              </button>
+              <button
+                disabled={retirando}
+                onClick={() => retirarPapeleria()}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  padding: '12px', borderRadius: 'var(--radius-md)',
+                  border: 'none', background: 'rgb(217 119 6)',
+                  color: 'white', fontWeight: 700, fontSize: 15,
+                  cursor: retirando ? 'not-allowed' : 'pointer',
+                  opacity: retirando ? 0.7 : 1,
+                }}
+              >
+                {retirando ? <Loader2 size={16} className="animate-pulse-soft" /> : <><PackageCheck size={16} /> Retirar</>}
               </button>
             </div>
           </div>

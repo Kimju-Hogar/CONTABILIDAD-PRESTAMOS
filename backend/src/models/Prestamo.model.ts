@@ -26,6 +26,8 @@ export interface IPrestamo extends Document {
   saldoPendiente: number;
   totalCobrado: number;
   ganancia: number;          // totalCobrado - capital (dinero real ganado)
+  papeleriaRetirada: boolean; // true si ya se retiró la papelería al cobrador/dueño
+  papeleriaRetiradaEn?: Date; // fecha en que se registró el retiro
   estado: 'activo' | 'completado' | 'cancelado' | 'refinanciado';
   cuotas: ICuota[];
   refinanciadoDe?: Types.ObjectId;
@@ -101,6 +103,8 @@ const PrestamoSchema = new Schema<IPrestamo>(
     },
     papeleria: { type: Number, default: 0 },
     montoDesembolsado: { type: Number, default: 0 },
+    papeleriaRetirada: { type: Boolean, default: false },
+    papeleriaRetiradaEn: { type: Date, default: null },
     cuotas: {
       type: [CuotaSchema],
       default: [],

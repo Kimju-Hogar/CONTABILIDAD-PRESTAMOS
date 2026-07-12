@@ -328,6 +328,27 @@ export class PrestamosService {
     prestamo.updatedBy = new mongoose.Types.ObjectId(usuarioId);
     await prestamo.save();
   }
+
+  // ─── Retirar papelería ────────────────────────────────────────
+  async retirarPapeleria(id: string, usuarioId: string): Promise<IPrestamo> {
+    const prestamo = await PrestamoModel.findById(id);
+    if (!prestamo) throw new NotFoundError('Préstamo');
+
+    if (prestamo.papeleriaRetirada) {
+      throw new AppError('La papelería de este préstamo ya fue retirada anteriormente', 400);
+    }
+
+    if ((prestamo.papeleria ?? 0) <= 0) {
+      throw new AppError('Este préstamo no tiene papelería registrada', 400);
+    }
+
+    prestamo.papeleriaRetirada = true;
+    prestamo.papeleriaRetiradaEn = new Date();
+    prestamo.updatedBy = new mongoose.Types.ObjectId(usuarioId);
+    await prestamo.save();
+
+    return prestamo;
+  }
 }
 
 export const prestamosService = new PrestamosService();
