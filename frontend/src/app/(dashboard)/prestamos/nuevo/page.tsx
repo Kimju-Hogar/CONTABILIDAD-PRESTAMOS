@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 import { Loader2, Calculator, Percent } from 'lucide-react';
 import { apiClient } from '@/services/api';
-import { calcularPrestamo, formatCOP, fechaHoyISO, type Modalidad, DEFAULT_CUOTAS } from '@/lib/utils';
+import { calcularPrestamo, formatCOP, fechaHoyISO, type Modalidad, DEFAULT_CUOTAS, CARTON_RENOVACION } from '@/lib/utils';
 
 // ─── Constantes UI ────────────────────────────────────────────
 const TASAS_RAPIDAS = [10, 15, 20];
@@ -43,6 +43,15 @@ export default function NuevoPrestamoPage() {
   const [modalidadVal, setModalidadVal] = useState<Modalidad>('diaria');
   const [plazoVal, setPlazoVal]       = useState(String(DEFAULT_CUOTAS.diaria));
   const [interesVal, setInteresVal]   = useState('20');
+  const [cartonVal, setCartonVal]     = useState('');
+
+  // Parámetros del negocio (valor del cartón configurable por el admin)
+  const { data: config } = useQuery<{ valorCarton: number }>({
+    queryKey: ['configuracion-negocio'],
+    queryFn: () => apiClient.get('/api/dashboard/configuracion').then((r) => r.data.data),
+    staleTime: 10 * 60 * 1000,
+  });
+  const valorCarton = config?.valorCarton ?? CARTON_RENOVACION;
 
   const { register, handleSubmit, setValue, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -66,12 +75,14 @@ export default function NuevoPrestamoPage() {
     modalidad: Modalidad,
     plazo: string,
     tasa: string,
+    carton: string = cartonVal,
   ) => {
     const num  = Number(capital.replace(/\D/g, ''));
     const pNum = Number(plazo);
     const iNum = Number(tasa);
+    const cNum = Number(carton.replace(/\D/g, '')) || 0;
     if (num >= 5_000 && pNum > 0 && iNum >= 5 && iNum <= 100) {
-      setPreview(calcularPrestamo(num, modalidad, pNum, iNum));
+      setPreview(calcularPrestamo(num, modalidad, pNum, iNum, cNum));
     } else {
       setPreview(null);
     }
@@ -96,6 +107,7 @@ export default function NuevoPrestamoPage() {
       interes:      data.interes,
       numeroCuotas: data.numeroCuotas,
       fechaInicio:  data.fechaInicio,
+      carton:       Number(cartonVal.replace(/\D/g, '')) || 0,
       observaciones: data.observaciones,
     }),
     onSuccess: (res) => {
@@ -276,6 +288,40 @@ export default function NuevoPrestamoPage() {
             <input type="date" className="input-field" {...register('fechaInicio')} />
             {errors.fechaInicio && <p className="input-error">{errors.fechaInicio.message}</p>}
           </div>
+
+          {/* Renovación de cartón */}
+          <div>
+            <label className="input-label">Renovación de cartón</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                className="input-field"
+                inputMode="numeric"
+                value={cartonVal}
+                placeholder="0"
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/\D/g, '');
+                  setCartonVal(raw);
+                  actualizarPreview(capitalVal.replace(/\D/g, ''), modalidadVal, plazoVal, interesVal, raw);
+                }}
+                style={{ textAlign: 'right' }}
+              />
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ width: 'auto', padding: '0 14px', whiteSpace: 'nowrap' }}
+                onClick={() => {
+                  const v = String(valorCarton);
+                  setCartonVal(v);
+                  actualizarPreview(capitalVal.replace(/\D/g, ''), modalidadVal, plazoVal, interesVal, v);
+                }}
+              >
+                {formatCOP(valorCarton)}
+              </button>
+            </div>
+            <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--text-muted)' }}>
+              Solo si el cliente renueva cartón. Se descuenta del desembolso y queda en caja.
+            </p>
+          </div>
         </div>
 
         {/* ── Preview de cálculo ── */}
@@ -294,6 +340,9 @@ export default function NuevoPrestamoPage() {
             {[
               { label: 'Capital',                              value: formatCOP(Number(capitalVal.replace(/\D/g, ''))), hi: false },
               { label: 'Papelería (descuento al cliente)',     value: `- ${formatCOP(preview.papeleria)}`,              hi: false },
+              ...(preview.carton > 0
+                ? [{ label: 'Renovación de cartón', value: `- ${formatCOP(preview.carton)}`, hi: false }]
+                : []),
               { label: 'El cliente recibe',                   value: formatCOP(preview.montoDesembolsado),              hi: true },
               null,
               { label: `Interés (${interesVal}%)`,            value: formatCOP(preview.totalInteres),                   hi: false },

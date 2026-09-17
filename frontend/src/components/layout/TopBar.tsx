@@ -12,6 +12,11 @@ const TITLES: Record<string, string> = {
   '/cobros':       'Cobros',
   '/gastos':       'Gastos',
   '/reportes':     'Reportes',
+  '/caja':         'Caja del día',
+  '/caja/historial': 'Cierres de caja',
+  '/admin':        'Panel admin',
+  '/admin/usuarios': 'Usuarios',
+  '/admin/configuracion': 'Parámetros',
 };
 
 export function TopBar() {
@@ -20,7 +25,7 @@ export function TopBar() {
   const { usuario, logout } = useAuthStore();
   const { isOnline, cobrosPendientes } = useOfflineStore();
 
-  const isRoot = ['/', '/clientes', '/prestamos', '/cobros', '/gastos'].includes(pathname);
+  const isRoot = ['/', '/clientes', '/prestamos', '/cobros', '/gastos', '/caja', '/admin'].includes(pathname);
 
   const title = (() => {
     for (const [key, val] of Object.entries(TITLES)) {
@@ -29,6 +34,8 @@ export function TopBar() {
     if (pathname.includes('/clientes/nuevo')) return 'Nuevo Cliente';
     if (pathname.includes('/prestamos/nuevo')) return 'Nuevo Préstamo';
     if (pathname.includes('/cobros/registrar')) return 'Registrar Cobro';
+    if (pathname.startsWith('/caja')) return 'Caja';
+    if (pathname.startsWith('/admin')) return 'Administración';
     if (pathname.includes('/cobros')) return 'Cobros';
     if (pathname.includes('/clientes')) return 'Cliente';
     if (pathname.includes('/prestamos')) return 'Préstamo';

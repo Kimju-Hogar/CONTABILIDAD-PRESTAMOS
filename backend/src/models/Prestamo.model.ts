@@ -20,6 +20,7 @@ export interface IPrestamo extends Document {
   numeroCuotas: number;
   cuotaDiaria: number;       // totalPagar / numeroCuotas
   papeleria: number;
+  carton: number;            // valor cobrado por renovación de cartón
   montoDesembolsado: number;
   fechaInicio: Date;
   fechaFin: Date;
@@ -28,6 +29,9 @@ export interface IPrestamo extends Document {
   ganancia: number;          // totalCobrado - capital (dinero real ganado)
   papeleriaRetirada: boolean; // true si ya se retiró la papelería al cobrador/dueño
   papeleriaRetiradaEn?: Date; // fecha en que se registró el retiro
+  cartonRetirado: boolean;    // true si ya se retiró el valor del cartón
+  cartonRetiradoEn?: Date;
+  esRenovacion: boolean;      // true si el préstamo nació de una renovación/refinanciación
   estado: 'activo' | 'completado' | 'cancelado' | 'refinanciado';
   cuotas: ICuota[];
   refinanciadoDe?: Types.ObjectId;
@@ -102,9 +106,13 @@ const PrestamoSchema = new Schema<IPrestamo>(
       default: 'diaria',
     },
     papeleria: { type: Number, default: 0 },
+    carton: { type: Number, default: 0 },
     montoDesembolsado: { type: Number, default: 0 },
     papeleriaRetirada: { type: Boolean, default: false },
     papeleriaRetiradaEn: { type: Date, default: null },
+    cartonRetirado: { type: Boolean, default: false },
+    cartonRetiradoEn: { type: Date, default: null },
+    esRenovacion: { type: Boolean, default: false },
     cuotas: {
       type: [CuotaSchema],
       default: [],

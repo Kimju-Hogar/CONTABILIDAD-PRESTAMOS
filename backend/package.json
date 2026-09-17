@@ -16,7 +16,8 @@
     "test:watch": "jest --watch",
     "seed:admin": "tsx scripts/seed-admin.ts",
     "seed:admin:reset": "tsx scripts/seed-admin.ts --reset",
-    "migrate:cuotas": "tsx scripts/migrate-cuotas-diarias.ts"
+    "migrate:cuotas": "tsx scripts/migrate-cuotas-diarias.ts",
+    "roles:separar": "tsx scripts/separar-roles.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

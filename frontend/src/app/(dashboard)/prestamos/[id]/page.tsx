@@ -96,6 +96,16 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
     onError: (err: any) => alert(err.response?.data?.message || 'Error al retirar papelería'),
   });
 
+  const { mutate: retirarCarton, isPending: retirandoCarton } = useMutation({
+    mutationFn: () => apiClient.post(`/api/prestamos/${id}/retirar-carton`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['prestamo', id] });
+      queryClient.invalidateQueries({ queryKey: ['prestamos'] });
+      queryClient.invalidateQueries({ queryKey: ['caja-estado'] });
+    },
+    onError: (err: any) => alert(err.response?.data?.message || 'Error al retirar el cartón'),
+  });
+
   const { mutate: eliminarCobro, isPending: eliminandoCobro } = useMutation({
     mutationFn: (cobroId: string) => apiClient.delete(`/api/cobros/${cobroId}`),
     onSuccess: () => {
@@ -260,6 +270,9 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
         {[
           { label: `Interés (${prestamo.interes ?? 20}%)`,    value: formatCOP(prestamo.totalInteres) },
           { label: 'Papelería descontada',                    value: formatCOP(prestamo.papeleria ?? 0) },
+          ...((prestamo.carton ?? 0) > 0
+            ? [{ label: 'Renovación de cartón', value: formatCOP(prestamo.carton ?? 0) }]
+            : []),
           { label: 'El cliente recibió',                      value: formatCOP(prestamo.montoDesembolsado ?? 0), hi: true },
           { label: 'Total a pagar',                           value: formatCOP(prestamo.totalPagar), hi: true },
           { label: `${labelCuota.charAt(0).toUpperCase() + labelCuota.slice(1)}`, value: formatCOP(prestamo.cuotaDiaria) },
@@ -496,6 +509,28 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
             >
               <PackageCheck size={18} />
               Retirar Papelería ({formatCOP(prestamo.papeleria ?? 0)})
+            </button>
+          )}
+          {!prestamo.cartonRetirado && (prestamo.carton ?? 0) > 0 && (
+            <button
+              type="button"
+              disabled={retirandoCarton}
+              onClick={() => {
+                if (window.confirm(`¿Retirar ${formatCOP(prestamo.carton ?? 0)} de renovación de cartón?`)) {
+                  retirarCarton();
+                }
+              }}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                padding: '13px 20px', borderRadius: 'var(--radius-md)',
+                border: '1.5px solid rgb(245 158 11 / 0.6)',
+                background: 'rgb(245 158 11 / 0.08)',
+                color: 'rgb(217 119 6)', fontWeight: 700, fontSize: 15,
+                cursor: 'pointer', width: '100%',
+              }}
+            >
+              <PackageCheck size={18} />
+              {retirandoCarton ? 'Retirando…' : `Retirar Cartón (${formatCOP(prestamo.carton ?? 0)})`}
             </button>
           )}
           <button

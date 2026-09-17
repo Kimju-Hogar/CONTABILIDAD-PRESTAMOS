@@ -18,6 +18,8 @@ import cobrosRoutes from './modules/cobros/cobros.routes';
 import gastosRoutes from './modules/gastos/gastos.routes';
 import dashboardRoutes from './modules/dashboard/dashboard.routes';
 import reportesRoutes from './modules/reportes/reportes.routes';
+import cajaRoutes from './modules/caja/caja.routes';
+import adminRoutes from './modules/admin/admin.routes';
 
 const app = express();
 
@@ -75,6 +77,8 @@ app.use('/api/cobros', cobrosRoutes);
 app.use('/api/gastos', gastosRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/reportes', reportesRoutes);
+app.use('/api/caja', cajaRoutes);
+app.use('/api/admin', adminRoutes);
 
 // ─── Error Handlers ───────────────────────────────────────────
 app.use(notFoundMiddleware);

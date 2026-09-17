@@ -9,6 +9,7 @@ import {
 import { apiClient } from '@/services/api';
 import { formatCOP, formatFechaCO } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
+import { ResumenCajaHoy } from '@/components/shared/ResumenCajaHoy';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
@@ -271,6 +272,9 @@ export default function DashboardPage() {
           {hoy}
         </p>
       </div>
+
+      {/* Estado de la caja del día */}
+      <ResumenCajaHoy />
 
       {/* ── Cobros de HOY ──────────────────────────────── */}
       <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>

@@ -68,6 +68,13 @@ export class PrestamosController {
       ResponseHelper.success(res, prestamo, 'Papelería retirada exitosamente');
     } catch (error) { next(error); }
   }
+
+  async retirarCarton(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const prestamo = await prestamosService.retirarCarton(req.params['id']!, req.user!.sub);
+      ResponseHelper.success(res, prestamo, 'Renovación de cartón retirada exitosamente');
+    } catch (error) { next(error); }
+  }
 }
 
 export const prestamosController = new PrestamosController();

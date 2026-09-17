@@ -49,4 +49,11 @@ router.post(
   prestamosController.retirarPapeleria.bind(prestamosController)
 );
 
+router.post(
+  '/:id/retirar-carton',
+  adminOnly,
+  auditMiddleware({ accion: 'RETIRAR_CARTON', recurso: 'Prestamo', getRecursoId: (r) => r.params['id'] }),
+  prestamosController.retirarCarton.bind(prestamosController)
+);
+
 export default router;

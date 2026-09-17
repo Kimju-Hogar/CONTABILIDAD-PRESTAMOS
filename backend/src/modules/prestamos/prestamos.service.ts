@@ -7,6 +7,9 @@ import { clientesRepository } from '../clientes/clientes.repository';
 import { NotFoundError, AppError } from '../../shared/middleware/error.middleware';
 import { buildPagination } from '../../shared/utils/responses';
 import { getSocketIO } from '../../config/socket';
+import { obtenerConfiguracion } from '../../models/Configuracion.model';
+import { MovimientoCajaModel } from '../../models/MovimientoCaja.model';
+import { keyDia } from '../../shared/utils/fechas';
 import {
   INTERES_FIJO, DEFAULT_CUOTAS, calcularPapeleria,
   type Modalidad,
@@ -16,13 +19,21 @@ import {
 
 const TIMEZONE = 'America/Bogota';
 
+/** Cargos y parámetros que la configuración del negocio inyecta al cálculo. */
+export interface OpcionesCalculo {
+  carton?: number;
+  papeleriaPorCienMil?: number;
+  papeleriaMinima?: number;
+}
+
 // ─── Cálculo financiero central ──────────────────────────────
 export function calcularPrestamo(
   capital: number,
   modalidad: Modalidad,
   fechaInicio: Date,
   plazoPersonalizado?: number,
-  interes: number = INTERES_FIJO
+  interes: number = INTERES_FIJO,
+  opciones: OpcionesCalculo = {}
 ) {
   const numeroCuotas = plazoPersonalizado ?? DEFAULT_CUOTAS[modalidad];
   const totalInteres = Math.round(capital * interes / 100);
@@ -42,8 +53,15 @@ export function calcularPrestamo(
     }
   })();
 
-  const papeleria = calcularPapeleria(capital);
-  const montoDesembolsado = capital - papeleria;
+  const papeleria = calcularPapeleria(
+    capital,
+    opciones.papeleriaPorCienMil,
+    opciones.papeleriaMinima
+  );
+  const carton = opciones.carton ?? 0;
+  // Papelería y cartón se retienen del desembolso: ese efectivo se queda en caja
+  // y alimenta la cuenta general de papelería y cartones.
+  const montoDesembolsado = capital - papeleria - carton;
 
   return {
     numeroCuotas,
@@ -52,6 +70,7 @@ export function calcularPrestamo(
     cuotaMonto,
     fechaFin,
     papeleria,
+    carton,
     montoDesembolsado,
   };
 }
@@ -158,8 +177,13 @@ export class PrestamosService {
       throw new AppError('El cliente está cancelado y no puede recibir préstamos', 400);
     }
 
+    const config = await obtenerConfiguracion();
     const fechaInicio = toZonedTime(dto.fechaInicio, TIMEZONE);
-    const calc = calcularPrestamo(dto.capital, dto.modalidad, fechaInicio, dto.numeroCuotas, dto.interes);
+    const calc = calcularPrestamo(dto.capital, dto.modalidad, fechaInicio, dto.numeroCuotas, dto.interes, {
+      carton: dto.carton ?? 0,
+      papeleriaPorCienMil: config.papeleriaPorCienMil,
+      papeleriaMinima: config.papeleriaMinima,
+    });
     const cuotas = generarCuotas(fechaInicio, calc.numeroCuotas, calc.cuotaMonto, dto.modalidad);
 
     const prestamo = await PrestamoModel.create({
@@ -169,6 +193,7 @@ export class PrestamosService {
       interes: dto.interes ?? INTERES_FIJO,
       modalidad: dto.modalidad,
       papeleria: calc.papeleria,
+      carton: calc.carton,
       montoDesembolsado: calc.montoDesembolsado,
       totalInteres: calc.totalInteres,
       totalPagar: calc.totalPagar,
@@ -217,9 +242,15 @@ export class PrestamosService {
     if (!original) throw new NotFoundError('Préstamo');
     if (original.estado !== 'activo') throw new AppError('Solo se pueden refinanciar préstamos activos', 400);
 
+    const config = await obtenerConfiguracion();
     const nuevoCapital = original.saldoPendiente + (dto.capitalAdicional ?? 0);
     const fechaInicio = toZonedTime(new Date(), TIMEZONE);
-    const calc = calcularPrestamo(nuevoCapital, dto.modalidad, fechaInicio);
+    // Toda refinanciación es una renovación: se cobra el cartón nuevo
+    const calc = calcularPrestamo(nuevoCapital, dto.modalidad, fechaInicio, undefined, config.interesPorDefecto, {
+      carton: dto.carton ?? config.valorCarton,
+      papeleriaPorCienMil: config.papeleriaPorCienMil,
+      papeleriaMinima: config.papeleriaMinima,
+    });
     const cuotas = generarCuotas(fechaInicio, calc.numeroCuotas, calc.cuotaMonto, dto.modalidad);
 
     await PrestamoModel.findByIdAndUpdate(id, { estado: 'refinanciado' });
@@ -228,9 +259,11 @@ export class PrestamosService {
       cliente: original.cliente,
       cobrador: original.cobrador,
       capital: nuevoCapital,
-      interes: INTERES_FIJO,
+      interes: config.interesPorDefecto,
       modalidad: dto.modalidad,
       papeleria: calc.papeleria,
+      carton: calc.carton,
+      esRenovacion: true,
       montoDesembolsado: calc.montoDesembolsado,
       totalInteres: calc.totalInteres,
       totalPagar: calc.totalPagar,
@@ -288,7 +321,12 @@ export class PrestamosService {
       if (prestamo.totalCobrado > 0) {
         throw new AppError('No se pueden modificar condiciones si ya hay cuotas pagadas. Refinancia o elimina pagos.', 400);
       }
-      const calc = calcularPrestamo(capital, modalidad, fechaInicio, numeroCuotas, interes);
+      const config = await obtenerConfiguracion();
+      const calc = calcularPrestamo(capital, modalidad, fechaInicio, numeroCuotas, interes, {
+        carton: prestamo.carton ?? 0,
+        papeleriaPorCienMil: config.papeleriaPorCienMil,
+        papeleriaMinima: config.papeleriaMinima,
+      });
       const cuotas = generarCuotas(fechaInicio, numeroCuotas, calc.cuotaMonto, modalidad);
 
       changes.capital = capital;
@@ -298,6 +336,7 @@ export class PrestamosService {
       changes.fechaInicio = fechaInicio;
       changes.fechaFin = calc.fechaFin;
       changes.papeleria = calc.papeleria;
+      changes.carton = calc.carton;
       changes.montoDesembolsado = calc.montoDesembolsado;
       changes.totalInteres = calc.totalInteres;
       changes.totalPagar = calc.totalPagar;
@@ -349,7 +388,57 @@ export class PrestamosService {
     prestamo.updatedBy = new mongoose.Types.ObjectId(usuarioId);
     await prestamo.save();
 
+    await this.registrarRetiroEnCaja(prestamo, prestamo.papeleria, 'Retiro de papelería', usuarioId);
+
     return prestamo;
+  }
+
+  // ─── Retirar renovación de cartón ─────────────────────────────
+  async retirarCarton(id: string, usuarioId: string): Promise<IPrestamo> {
+    const prestamo = await PrestamoModel.findById(id);
+    if (!prestamo) throw new NotFoundError('Préstamo');
+
+    if (prestamo.cartonRetirado) {
+      throw new AppError('El cartón de este préstamo ya fue retirado anteriormente', 400);
+    }
+
+    if ((prestamo.carton ?? 0) <= 0) {
+      throw new AppError('Este préstamo no tiene renovación de cartón registrada', 400);
+    }
+
+    prestamo.cartonRetirado = true;
+    prestamo.cartonRetiradoEn = new Date();
+    prestamo.ganancia = Math.max(0, prestamo.ganancia - prestamo.carton);
+    prestamo.updatedBy = new mongoose.Types.ObjectId(usuarioId);
+    await prestamo.save();
+
+    await this.registrarRetiroEnCaja(prestamo, prestamo.carton, 'Retiro de renovación de cartón', usuarioId);
+
+    return prestamo;
+  }
+
+  /**
+   * Deja constancia en el libro de caja de que el efectivo de la cuenta de
+   * papelería/cartones salió físicamente de la caja del cobrador.
+   */
+  private async registrarRetiroEnCaja(
+    prestamo: IPrestamo,
+    monto: number,
+    descripcion: string,
+    usuarioId: string
+  ): Promise<void> {
+    await MovimientoCajaModel.create({
+      fechaKey: keyDia(),
+      fecha: new Date(),
+      cobrador: prestamo.cobrador,
+      tipo: 'egreso',
+      concepto: 'retiro_papeleria',
+      monto,
+      descripcion,
+      prestamo: prestamo._id,
+      cliente: prestamo.cliente,
+      registradoPor: usuarioId,
+    });
   }
 }
 

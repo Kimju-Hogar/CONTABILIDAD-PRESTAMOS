@@ -18,9 +18,20 @@ export const DEFAULT_CUOTAS: Record<Modalidad, number> = {
   mensual:   CUOTAS_MENSUALES,
 };
 
-export function calcularPapeleria(capital: number): number {
-  const calculada = Math.floor(capital / 100_000) * PAPELERIA_POR_CIEN_MIL;
-  return Math.max(5000, calculada);
+export const CARTON_RENOVACION = 5000;      // valor por defecto de renovación de cartón
+
+/**
+ * Papelería cobrada al desembolsar. Los parámetros llegan de la configuración
+ * del negocio; los valores por defecto conservan la regla histórica
+ * ($5.000 por cada $100.000, con un piso de $5.000).
+ */
+export function calcularPapeleria(
+  capital: number,
+  porCienMil: number = PAPELERIA_POR_CIEN_MIL,
+  minima: number = PAPELERIA_POR_CIEN_MIL
+): number {
+  const calculada = Math.floor(capital / 100_000) * porCienMil;
+  return Math.max(minima, calculada);
 }
 
 // ─── DTOs ─────────────────────────────────────────────────────
@@ -48,12 +59,16 @@ export const CrearPrestamoDto = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (YYYY-MM-DD)')
     .transform((v) => new Date(v + 'T00:00:00')),
+  /** Valor de renovación de cartón. Si se omite, se toma de la configuración. */
+  carton: z.number().min(0).optional(),
   observaciones: z.string().max(1000).optional(),
 });
 
 export const RefinanciarPrestamoDto = z.object({
   capitalAdicional: z.number().min(0).optional().default(0),
   modalidad: z.enum(MODALIDAD_VALUES),
+  /** Valor de renovación de cartón. Si se omite, se toma de la configuración. */
+  carton: z.number().min(0).optional(),
   observaciones: z.string().max(1000).optional(),
 });
 

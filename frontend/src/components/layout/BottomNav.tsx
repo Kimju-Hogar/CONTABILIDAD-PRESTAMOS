@@ -2,19 +2,31 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  Home, Users, CreditCard, DollarSign, Settings
+  Home, Users, CreditCard, DollarSign, Wallet, BarChart3
 } from 'lucide-react';
+import { useAuthStore } from '@/stores/authStore';
 
-const navItems = [
-  { href: '/',          icon: Home,       label: 'Inicio' },
+const NAV_COBRADOR = [
+  { href: '/',          icon: Home,        label: 'Inicio' },
   { href: '/clientes',  icon: Users,       label: 'Clientes' },
   { href: '/cobros',    icon: DollarSign,  label: 'Cobros' },
   { href: '/prestamos', icon: CreditCard,  label: 'Préstamos' },
-  { href: '/gastos',    icon: Settings,    label: 'Gastos' },
+  { href: '/caja',      icon: Wallet,      label: 'Caja' },
+];
+
+// El admin cambia Clientes por el panel: las cifras pesan más que el listado
+const NAV_ADMIN = [
+  { href: '/',          icon: Home,        label: 'Inicio' },
+  { href: '/cobros',    icon: DollarSign,  label: 'Cobros' },
+  { href: '/prestamos', icon: CreditCard,  label: 'Préstamos' },
+  { href: '/caja',      icon: Wallet,      label: 'Caja' },
+  { href: '/admin',     icon: BarChart3,   label: 'Panel' },
 ];
 
 export function BottomNav() {
   const pathname = usePathname();
+  const { usuario } = useAuthStore();
+  const navItems = usuario?.rol === 'admin' ? NAV_ADMIN : NAV_COBRADOR;
 
   return (
     <nav className="bottom-nav" role="navigation" aria-label="Navegación principal">

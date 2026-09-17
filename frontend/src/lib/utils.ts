@@ -47,11 +47,14 @@ export function calcularPapeleria(capital: number): number {
   return Math.max(5000, calculada);
 }
 
+export const CARTON_RENOVACION = 5_000;
+
 export function calcularPrestamo(
   capital: number,
   modalidad: Modalidad,
   plazoPersonalizado?: number,
-  interes: number = INTERES_FIJO
+  interes: number = INTERES_FIJO,
+  carton: number = 0
 ) {
   const numeroCuotas = plazoPersonalizado ?? DEFAULT_CUOTAS[modalidad];
   const totalInteres = Math.round(capital * interes / 100);
@@ -59,7 +62,8 @@ export function calcularPrestamo(
   const cuotaBase = totalPagar / numeroCuotas;
   const cuotaMonto = Math.ceil(cuotaBase / 100) * 100;
   const papeleria = calcularPapeleria(capital);
-  const montoDesembolsado = capital - papeleria;
+  // Papelería y cartón se retienen del desembolso y quedan en caja
+  const montoDesembolsado = capital - papeleria - carton;
 
   // La descripción indica la primera cuota (día siguiente para diaria)
   let descripcionFecha = '';
@@ -75,6 +79,7 @@ export function calcularPrestamo(
     totalPagar,
     cuotaMonto,
     papeleria,
+    carton,
     montoDesembolsado,
     descripcion: `${numeroCuotas} ${LABEL_CUOTA[modalidad]} de ${formatCOP(cuotaMonto)}${descripcionFecha}`,
   };
