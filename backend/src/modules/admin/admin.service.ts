@@ -139,8 +139,14 @@ export class AdminService {
     ]);
 
     const totalGastos = gastos.reduce((acc, g) => acc + g.total, 0);
+
+    // Meter plata propia a la caja no es una venta: engorda el efectivo pero no
+    // la ganancia. Se reporta aparte para no inflar la utilidad.
+    const aportes = movimientos
+      .filter((m) => m._id.tipo === 'ingreso' && m._id.concepto === 'inyeccion_capital')
+      .reduce((acc, m) => acc + m.total, 0);
     const otrosIngresos = movimientos
-      .filter((m) => m._id.tipo === 'ingreso')
+      .filter((m) => m._id.tipo === 'ingreso' && m._id.concepto !== 'inyeccion_capital')
       .reduce((acc, m) => acc + m.total, 0);
     // Los retiros (utilidad, papelería) sacan efectivo de la caja pero no son
     // un costo del negocio: son reparto. Se reportan aparte del gasto operativo.
@@ -155,6 +161,7 @@ export class AdminService {
       gastos: totalGastos,
       gastosPorCategoria: gastos.map((g) => ({ categoria: g._id, total: g.total })),
       otrosIngresos,
+      aportes,
       otrosEgresos,
       retiros,
     };
@@ -293,14 +300,15 @@ export class AdminService {
       this.resumenCaja(rango, cobradorId),
     ]);
 
-    const ingresosBrutos =
-      recaudo.interesDevengado +
-      colocacion.papeleriaGenerada +
-      colocacion.cartonesGenerados +
-      egresos.otrosIngresos;
+    // La papelería es lo que se lleva el cobrador, así que no entra en la
+    // utilidad del dueño: se reporta aparte y luego se suma al total generado.
+    const ingresosNegocio =
+      recaudo.interesDevengado + colocacion.cartonesGenerados + egresos.otrosIngresos;
+    const papeleriaCobrador = colocacion.papeleriaGenerada;
 
     const costos = egresos.gastos + egresos.otrosEgresos;
-    const utilidadNeta = ingresosBrutos - costos;
+    const utilidadNegocio = ingresosNegocio - costos;
+    const totalGenerado = utilidadNegocio + papeleriaCobrador;
 
     const dias = Math.max(
       1,
@@ -322,10 +330,11 @@ export class AdminService {
       },
       ingresos: {
         interesDevengado: recaudo.interesDevengado,
-        papeleria: colocacion.papeleriaGenerada,
+        papeleria: papeleriaCobrador,
         cartones: colocacion.cartonesGenerados,
         otros: egresos.otrosIngresos,
-        total: ingresosBrutos,
+        totalNegocio: ingresosNegocio,
+        total: ingresosNegocio + papeleriaCobrador,
       },
       egresos: {
         gastos: egresos.gastos,
@@ -335,17 +344,20 @@ export class AdminService {
         total: costos,
       },
       utilidad: {
-        bruta: ingresosBrutos,
-        neta: utilidadNeta,
-        margenSobreRecaudo: pct(utilidadNeta, recaudo.total),
-        margenSobreColocado: pct(utilidadNeta, colocacion.capitalPrestado),
-        rentabilidadCartera: pct(utilidadNeta, cart.capitalEnCalle),
+        negocio: utilidadNegocio,
+        cobrador: papeleriaCobrador,
+        total: totalGenerado,
+        margenSobreRecaudo: pct(utilidadNegocio, recaudo.total),
+        margenSobreColocado: pct(utilidadNegocio, colocacion.capitalPrestado),
+        rentabilidadCartera: pct(utilidadNegocio, cart.capitalEnCalle),
       },
       flujoEfectivo: {
-        entradas: recaudo.total + egresos.otrosIngresos,
+        // Aquí sí entra la plata propia inyectada: mueve caja aunque no sea ganancia
+        entradas: recaudo.total + egresos.otrosIngresos + egresos.aportes,
         salidas: colocacion.desembolsadoEfectivo + egresos.gastos + egresos.otrosEgresos + egresos.retiros,
+        aportes: egresos.aportes,
         neto:
-          recaudo.total + egresos.otrosIngresos -
+          recaudo.total + egresos.otrosIngresos + egresos.aportes -
           (colocacion.desembolsadoEfectivo + egresos.gastos + egresos.otrosEgresos + egresos.retiros),
       },
       cartera: cart,
@@ -399,6 +411,165 @@ export class AdminService {
         : null,
       hoyCerrada: (await CajaDiaModel.countDocuments({ ...match, fechaKey: keyDia(), estado: 'cerrado' })) > 0,
     };
+  }
+
+  // ─── Desglose por día o por mes ─────────────────────────────
+  /**
+   * Una fila por día (o por mes) del periodo, con lo prestado, lo recogido, el
+   * interés ganado, la papelería del cobrador, los cartones y los gastos.
+   * Es la tabla que se imprime en el reporte.
+   */
+  async desglose(
+    rango: Rango,
+    granularidad: 'dia' | 'mes' = 'dia',
+    cobradorId?: string
+  ) {
+    const formato = granularidad === 'mes' ? '%Y-%m' : '%Y-%m-%d';
+
+    const matchCobros: Record<string, unknown> = {
+      fecha: { $gte: rango.inicio, $lte: rango.fin },
+      anulado: false,
+    };
+    const matchPrestamos: Record<string, unknown> = {
+      fechaInicio: { $gte: rango.inicio, $lte: rango.fin },
+      deletedAt: null,
+      estado: { $ne: 'cancelado' },
+    };
+    const matchGastos: Record<string, unknown> = {
+      fecha: { $gte: rango.inicio, $lte: rango.fin },
+      deletedAt: null,
+    };
+    // Mismo criterio que el resumen: los aportes de capital no son ganancia
+    const matchMovimientos: Record<string, unknown> = {
+      fecha: { $gte: rango.inicio, $lte: rango.fin },
+      deletedAt: null,
+      concepto: { $nin: ['inyeccion_capital', 'retiro_utilidad', 'retiro_papeleria'] },
+    };
+    if (cobradorId) {
+      matchCobros.cobrador = oid(cobradorId);
+      matchPrestamos.cobrador = oid(cobradorId);
+      matchGastos.usuario = oid(cobradorId);
+      matchMovimientos.cobrador = oid(cobradorId);
+    }
+
+    const [cobros, prestamos, gastos, movimientos] = await Promise.all([
+      CobroModel.aggregate([
+        { $match: matchCobros },
+        { $lookup: { from: 'prestamos', localField: 'prestamo', foreignField: '_id', as: 'p' } },
+        { $unwind: { path: '$p', preserveNullAndEmptyArrays: true } },
+        {
+          $project: {
+            clave: { $dateToString: { format: formato, date: '$fecha', timezone: TZ } },
+            monto: 1,
+            interes: {
+              $cond: [
+                { $gt: [{ $ifNull: ['$p.totalPagar', 0] }, 0] },
+                { $multiply: ['$monto', { $divide: ['$p.totalInteres', '$p.totalPagar'] }] },
+                0,
+              ],
+            },
+          },
+        },
+        {
+          $group: {
+            _id: '$clave',
+            recaudado: { $sum: '$monto' },
+            interes: { $sum: '$interes' },
+            cobros: { $sum: 1 },
+          },
+        },
+      ]),
+      PrestamoModel.aggregate([
+        { $match: matchPrestamos },
+        {
+          $group: {
+            _id: { $dateToString: { format: formato, date: '$fechaInicio', timezone: TZ } },
+            prestado: { $sum: '$capital' },
+            desembolsado: { $sum: '$montoDesembolsado' },
+            papeleria: { $sum: '$papeleria' },
+            cartones: { $sum: { $ifNull: ['$carton', 0] } },
+            prestamos: { $sum: 1 },
+          },
+        },
+      ]),
+      GastoModel.aggregate([
+        { $match: matchGastos },
+        {
+          $group: {
+            _id: { $dateToString: { format: formato, date: '$fecha', timezone: TZ } },
+            gastos: { $sum: '$monto' },
+          },
+        },
+      ]),
+      MovimientoCajaModel.aggregate([
+        { $match: matchMovimientos },
+        {
+          $group: {
+            _id: {
+              clave: { $dateToString: { format: formato, date: '$fecha', timezone: TZ } },
+              tipo: '$tipo',
+            },
+            total: { $sum: '$monto' },
+          },
+        },
+      ]),
+    ]);
+
+    const mapC = new Map(cobros.map((x) => [x._id, x]));
+    const mapP = new Map(prestamos.map((x) => [x._id, x]));
+    const mapG = new Map(gastos.map((x) => [x._id, x]));
+    const mapMovIn = new Map(
+      movimientos.filter((m) => m._id.tipo === 'ingreso').map((m) => [m._id.clave, m.total])
+    );
+    const mapMovOut = new Map(
+      movimientos.filter((m) => m._id.tipo === 'egreso').map((m) => [m._id.clave, m.total])
+    );
+
+    const claves = [
+      ...new Set([...mapC.keys(), ...mapP.keys(), ...mapG.keys(), ...mapMovIn.keys(), ...mapMovOut.keys()]),
+    ].sort();
+
+    return claves.map((clave) => {
+      const c = mapC.get(clave);
+      const p = mapP.get(clave);
+      const g = mapG.get(clave);
+      const interes = redondear(c?.interes ?? 0);
+      const cartones = p?.cartones ?? 0;
+      const gastosDia = g?.gastos ?? 0;
+      const otrosIngresos = mapMovIn.get(clave) ?? 0;
+      const otrosEgresos = mapMovOut.get(clave) ?? 0;
+      return {
+        clave,
+        prestado: p?.prestado ?? 0,
+        desembolsado: p?.desembolsado ?? 0,
+        prestamos: p?.prestamos ?? 0,
+        recaudado: c?.recaudado ?? 0,
+        cobros: c?.cobros ?? 0,
+        interes,
+        papeleria: p?.papeleria ?? 0,
+        cartones,
+        gastos: gastosDia,
+        otrosIngresos,
+        otrosEgresos,
+        // Utilidad del dueño: la papelería es del cobrador y se reporta aparte
+        utilidadNegocio: interes + cartones + otrosIngresos - gastosDia - otrosEgresos,
+      };
+    });
+  }
+
+  /** Todo lo que lleva el reporte general, en una sola consulta compuesta. */
+  async reporteGeneral(periodo: Periodo, desde?: string, hasta?: string, cobradorId?: string) {
+    const rango = rangoPeriodo(periodo, desde, hasta);
+
+    const [resumen, porDia, porMes, cobradores, aging] = await Promise.all([
+      this.resumen(periodo, desde, hasta, cobradorId),
+      this.desglose(rango, 'dia', cobradorId),
+      this.desglose(rango, 'mes', cobradorId),
+      this.rendimientoCobradores(periodo, desde, hasta),
+      this.aging(),
+    ]);
+
+    return { resumen, porDia, porMes, cobradores, aging, generadoEn: new Date() };
   }
 
   // ─── Series temporales ──────────────────────────────────────

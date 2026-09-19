@@ -65,8 +65,11 @@ export const CrearPrestamoDto = z.object({
 });
 
 export const RefinanciarPrestamoDto = z.object({
+  /** Plata nueva que se le entrega al cliente además de arrastrar su saldo. */
   capitalAdicional: z.number().min(0).optional().default(0),
   modalidad: z.enum(MODALIDAD_VALUES),
+  interes: z.number().min(5, 'El interés mínimo es 5%').max(100, 'El interés máximo es 100%').optional(),
+  numeroCuotas: z.number().int().positive('Las cuotas deben ser mayores a 0').optional(),
   /** Valor de renovación de cartón. Si se omite, se toma de la configuración. */
   carton: z.number().min(0).optional(),
   observaciones: z.string().max(1000).optional(),

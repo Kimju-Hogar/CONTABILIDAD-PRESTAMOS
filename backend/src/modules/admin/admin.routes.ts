@@ -87,6 +87,34 @@ router.get('/top-clientes', async (req: Request, res: Response, next: NextFuncti
   } catch (error) { next(error); }
 });
 
+// ─── Reporte general ──────────────────────────────────────────
+router.get('/reporte', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { periodo, desde, hasta } = leerPeriodo(req);
+    const cobradorId = req.query['cobradorId'] as string | undefined;
+    ResponseHelper.success(res, await adminService.reporteGeneral(periodo, desde, hasta, cobradorId));
+  } catch (error) { next(error); }
+});
+
+router.get('/reporte.pdf', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { periodo, desde, hasta } = leerPeriodo(req);
+    const cobradorId = req.query['cobradorId'] as string | undefined;
+    const detallado = req.query['detallado'] === 'true';
+
+    const datos = await adminService.reporteGeneral(periodo, desde, hasta, cobradorId);
+    // Import dinámico: PDFKit pesa y sólo hace falta cuando piden el reporte
+    const { construirReportePDF } = await import('./admin.reporte');
+    const pdf = await construirReportePDF(datos, detallado);
+
+    const nombre = `gotagota_reporte_${detallado ? 'detallado' : 'general'}_${periodo}_${Date.now()}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=${nombre}`);
+    res.setHeader('Content-Length', pdf.length);
+    res.send(pdf);
+  } catch (error) { next(error); }
+});
+
 // ─── Cuenta general de papelería y cartones ───────────────────
 router.get('/cuenta-papeleria', async (req: Request, res: Response, next: NextFunction) => {
   try {

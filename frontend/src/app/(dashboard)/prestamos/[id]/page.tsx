@@ -491,8 +491,8 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
           <Link href={`/cobros/registrar?prestamoId=${id}`}>
             <button className="btn-primary">Registrar cobro</button>
           </Link>
-          <Link href={`/prestamos/nuevo?refinanciarId=${id}`}>
-            <button className="btn-secondary">Refinanciar préstamo</button>
+          <Link href={`/prestamos/${id}/renovar`}>
+            <button className="btn-secondary">Renovar / refinanciar</button>
           </Link>
           {!prestamo.papeleriaRetirada && (prestamo.papeleria ?? 0) > 0 && (
             <button

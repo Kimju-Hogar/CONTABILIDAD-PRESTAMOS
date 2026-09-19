@@ -32,6 +32,7 @@ export interface IPrestamo extends Document {
   cartonRetirado: boolean;    // true si ya se retiró el valor del cartón
   cartonRetiradoEn?: Date;
   esRenovacion: boolean;      // true si el préstamo nació de una renovación/refinanciación
+  saldoRefinanciado: number;  // saldo del préstamo anterior que se arrastró a este
   estado: 'activo' | 'completado' | 'cancelado' | 'refinanciado';
   cuotas: ICuota[];
   refinanciadoDe?: Types.ObjectId;
@@ -113,6 +114,7 @@ const PrestamoSchema = new Schema<IPrestamo>(
     cartonRetirado: { type: Boolean, default: false },
     cartonRetiradoEn: { type: Date, default: null },
     esRenovacion: { type: Boolean, default: false },
+    saldoRefinanciado: { type: Number, default: 0 },
     cuotas: {
       type: [CuotaSchema],
       default: [],

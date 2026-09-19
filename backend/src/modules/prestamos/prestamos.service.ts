@@ -243,10 +243,15 @@ export class PrestamosService {
     if (original.estado !== 'activo') throw new AppError('Solo se pueden refinanciar préstamos activos', 400);
 
     const config = await obtenerConfiguracion();
-    const nuevoCapital = original.saldoPendiente + (dto.capitalAdicional ?? 0);
+    // El saldo que el cliente aún debe se arrastra al préstamo nuevo y encima se
+    // le suma la plata adicional que se lleva hoy; la papelería se cobra otra vez
+    // sobre ese capital total.
+    const saldoArrastrado = original.saldoPendiente;
+    const nuevoCapital = saldoArrastrado + (dto.capitalAdicional ?? 0);
+    const interes = dto.interes ?? config.interesPorDefecto;
     const fechaInicio = toZonedTime(new Date(), TIMEZONE);
     // Toda refinanciación es una renovación: se cobra el cartón nuevo
-    const calc = calcularPrestamo(nuevoCapital, dto.modalidad, fechaInicio, undefined, config.interesPorDefecto, {
+    const calc = calcularPrestamo(nuevoCapital, dto.modalidad, fechaInicio, dto.numeroCuotas, interes, {
       carton: dto.carton ?? config.valorCarton,
       papeleriaPorCienMil: config.papeleriaPorCienMil,
       papeleriaMinima: config.papeleriaMinima,
@@ -255,16 +260,23 @@ export class PrestamosService {
 
     await PrestamoModel.findByIdAndUpdate(id, { estado: 'refinanciado' });
 
+    // El saldo arrastrado no sale de la caja: es deuda que se traslada en papel.
+    // El efectivo que realmente se entrega es solo la plata adicional menos los
+    // cargos, y puede quedar negativo si el cliente no pide plata nueva (ahí es
+    // él quien pone el valor de la papelería y el cartón).
+    const desembolsoReal = (dto.capitalAdicional ?? 0) - calc.papeleria - calc.carton;
+
     const nuevoPrestamo = await PrestamoModel.create({
       cliente: original.cliente,
       cobrador: original.cobrador,
       capital: nuevoCapital,
-      interes: config.interesPorDefecto,
+      interes,
       modalidad: dto.modalidad,
       papeleria: calc.papeleria,
       carton: calc.carton,
       esRenovacion: true,
-      montoDesembolsado: calc.montoDesembolsado,
+      saldoRefinanciado: saldoArrastrado,
+      montoDesembolsado: desembolsoReal,
       totalInteres: calc.totalInteres,
       totalPagar: calc.totalPagar,
       numeroCuotas: calc.numeroCuotas,

@@ -33,14 +33,17 @@ interface Resumen {
     total: number; cantidad: number; interesDevengado: number;
     capitalRecuperado: number; promedioDiario: number;
   };
-  ingresos: { interesDevengado: number; papeleria: number; cartones: number; otros: number; total: number };
+  ingresos: {
+    interesDevengado: number; papeleria: number; cartones: number;
+    otros: number; totalNegocio: number; total: number;
+  };
   egresos: {
     gastos: number; otros: number; retiros: number; total: number;
     gastosPorCategoria: Array<{ categoria: string; total: number }>;
   };
   utilidad: {
-    bruta: number; neta: number; margenSobreRecaudo: number;
-    margenSobreColocado: number; rentabilidadCartera: number;
+    negocio: number; cobrador: number; total: number;
+    margenSobreRecaudo: number; margenSobreColocado: number; rentabilidadCartera: number;
   };
   flujoEfectivo: { entradas: number; salidas: number; neto: number };
   cartera: {
@@ -164,8 +167,8 @@ export default function AdminPage() {
           icon={TrendingUp}
         />
         <StatCard
-          label="Utilidad neta"
-          value={formatCOP(resumen.utilidad.neta)}
+          label="Tu ganancia"
+          value={formatCOP(resumen.utilidad.negocio)}
           sub={`Margen ${resumen.utilidad.margenSobreRecaudo}% del recaudo`}
           gradient="linear-gradient(135deg, #d97706, #f59e0b)"
           icon={PiggyBank}
@@ -224,14 +227,10 @@ export default function AdminPage() {
           valor={resumen.ingresos.interesDevengado}
           tono="positivo"
         />
-        <StatRow label="Papelería cobrada" valor={resumen.ingresos.papeleria} tono="positivo" />
         <StatRow label="Renovación de cartones" valor={resumen.ingresos.cartones} tono="positivo" />
         {resumen.ingresos.otros > 0 && (
           <StatRow label="Otros ingresos" valor={resumen.ingresos.otros} tono="positivo" />
         )}
-        <Sep />
-        <StatRow label="Ingresos del periodo" valor={resumen.ingresos.total} negrita />
-        <Sep />
         {resumen.egresos.gastosPorCategoria.map((g) => (
           <StatRow
             key={g.categoria}
@@ -243,9 +242,16 @@ export default function AdminPage() {
         {resumen.egresos.otros > 0 && (
           <StatRow label="Otros egresos" valor={-resumen.egresos.otros} tono="negativo" />
         )}
-        <StatRow label="Total gastos" valor={-resumen.egresos.total} tono="negativo" />
         <Sep />
-        <StatRow label="Utilidad neta" valor={resumen.utilidad.neta} negrita tono="positivo" />
+        <StatRow label="Tu ganancia (negocio)" valor={resumen.utilidad.negocio} negrita tono="positivo" />
+        <StatRow
+          label="Ganancia del cobrador"
+          sub="La papelería cobrada en los préstamos del periodo"
+          valor={resumen.utilidad.cobrador}
+          negrita
+        />
+        <Sep />
+        <StatRow label="Total generado" valor={resumen.utilidad.total} negrita />
       </SectionCard>
 
       {/* ─── Márgenes ───────────────────────────────────────── */}
@@ -399,10 +405,10 @@ export default function AdminPage() {
       {/* ─── Accesos de administración ──────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         {[
+          { href: '/admin/reporte', icon: FileText, label: 'Reporte PDF' },
           { href: '/admin/usuarios', icon: UserCog, label: 'Usuarios' },
           { href: '/admin/configuracion', icon: Settings, label: 'Parámetros' },
           { href: '/clientes', icon: Users, label: 'Clientes' },
-          { href: '/reportes', icon: FileText, label: 'Reportes' },
         ].map(({ href, icon: Icon, label }) => (
           <Link key={href} href={href} style={{ textDecoration: 'none' }}>
             <div className="card" style={{ padding: 14, textAlign: 'center' }}>

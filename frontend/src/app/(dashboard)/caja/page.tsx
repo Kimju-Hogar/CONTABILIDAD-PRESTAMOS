@@ -99,7 +99,8 @@ function Modal({
     <div
       onClick={onClose}
       style={{
-        position: 'fixed', inset: 0, zIndex: 100,
+        // Por encima de la topbar y la bottom-nav, que viven en z-index 100
+        position: 'fixed', inset: 0, zIndex: 200,
         background: 'rgb(0 0 0 / 0.5)',
         display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
       }}
@@ -231,15 +232,22 @@ export default function CajaPage() {
 
       {/* ─── Saldo principal ────────────────────────────────── */}
       <StatCard
-        label={cerrada ? 'Cerraste el día con' : 'Efectivo que debes tener'}
+        label={
+          cerrada ? 'Cerraste el día con'
+          : abierta ? 'Efectivo que debes tener'
+          : 'Movimiento del día (sin base)'
+        }
         value={formatCOP(cerrada ? (data.saldoContado ?? data.saldoEsperado) : data.saldoEsperado)}
         sub={
           cerrada
             ? `Esperado ${formatCOP(data.saldoEsperado)} · Diferencia ${formatCOP(data.diferencia)}`
-            : `Base ${formatCOP(data.baseInicial)} + recogido − prestado − gastos`
+            : abierta
+              ? `Base ${formatCOP(data.baseInicial)} + recogido − prestado − gastos`
+              : 'Abre la caja con tu base para ver el efectivo real'
         }
         gradient={
-          cerrada && data.diferencia !== 0
+          // Ámbar cuando algo pide atención: descuadre al cerrar, o día sin abrir
+          (cerrada && data.diferencia !== 0) || !abierta && !cerrada
             ? 'linear-gradient(135deg, #d97706, #f59e0b)'
             : 'linear-gradient(135deg, #059669, #0d9488)'
         }

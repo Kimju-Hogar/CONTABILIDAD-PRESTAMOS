@@ -22,7 +22,8 @@ function Modal({ titulo, onClose, children }: { titulo: string; onClose: () => v
     <div
       onClick={onClose}
       style={{
-        position: 'fixed', inset: 0, zIndex: 100, background: 'rgb(0 0 0 / 0.5)',
+        // Por encima de la topbar y la bottom-nav, que viven en z-index 100
+        position: 'fixed', inset: 0, zIndex: 200, background: 'rgb(0 0 0 / 0.5)',
         display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
       }}
     >

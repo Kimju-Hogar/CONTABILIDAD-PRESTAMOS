@@ -17,6 +17,7 @@ const TITLES: Record<string, string> = {
   '/admin':        'Panel admin',
   '/admin/usuarios': 'Usuarios',
   '/admin/configuracion': 'Parámetros',
+  '/admin/reporte': 'Reporte general',
 };
 
 export function TopBar() {
@@ -33,6 +34,7 @@ export function TopBar() {
     }
     if (pathname.includes('/clientes/nuevo')) return 'Nuevo Cliente';
     if (pathname.includes('/prestamos/nuevo')) return 'Nuevo Préstamo';
+    if (pathname.endsWith('/renovar')) return 'Renovar préstamo';
     if (pathname.includes('/cobros/registrar')) return 'Registrar Cobro';
     if (pathname.startsWith('/caja')) return 'Caja';
     if (pathname.startsWith('/admin')) return 'Administración';
