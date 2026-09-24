@@ -198,6 +198,165 @@ export class DashboardService {
       { $limit: 50 },
     ]);
   }
+  /**
+   * Los clientes repartidos por cómo van, que es como el cobrador piensa la
+   * ruta: quién ya pagó hoy, quién falta, quién está en mora y quién terminó.
+   *
+   * Un cliente cae en un solo grupo, por prioridad: primero si pagó hoy,
+   * después si está en mora, después si le toca hoy, y si no, al día.
+   */
+  async getTableroClientes() {
+    const { inicio, fin } = rangoHoy();
+
+    const activos = await PrestamoModel.aggregate([
+      { $match: { estado: 'activo', deletedAt: null } },
+      {
+        $lookup: {
+          from: 'clientes', localField: 'cliente', foreignField: '_id', as: 'c',
+        },
+      },
+      { $unwind: '$c' },
+      {
+        $lookup: {
+          from: 'cobros',
+          let: { p: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$prestamo', '$$p'] },
+                fecha: { $gte: inicio, $lte: fin },
+                anulado: false,
+              },
+            },
+          ],
+          as: 'cobrosHoy',
+        },
+      },
+      {
+        $lookup: {
+          from: 'cobros',
+          let: { p: '$_id' },
+          pipeline: [
+            { $match: { $expr: { $eq: ['$prestamo', '$$p'] }, anulado: false } },
+            { $sort: { fecha: -1 } },
+            { $limit: 1 },
+            { $project: { fecha: 1 } },
+          ],
+          as: 'ultimo',
+        },
+      },
+      {
+        $addFields: {
+          esperadoALaFecha: {
+            $sum: {
+              $map: {
+                input: { $filter: { input: '$cuotas', cond: { $lte: ['$$this.fechaEsperada', fin] } } },
+                in: '$$this.monto',
+              },
+            },
+          },
+          ultimoPago: { $arrayElemAt: ['$ultimo', 0] },
+        },
+      },
+      {
+        $project: {
+          prestamoId: '$_id',
+          clienteId: '$c._id',
+          nombre: '$c.nombre',
+          celular: '$c.celular',
+          barrio: '$c.barrio',
+          cuota: '$cuotaDiaria',
+          saldoPendiente: 1,
+          totalPagar: 1,
+          totalCobrado: 1,
+          pagadoHoy: { $gt: [{ $size: '$cobrosHoy' }, 0] },
+          montoCobradoHoy: { $sum: '$cobrosHoy.monto' },
+          atraso: { $max: [0, { $subtract: ['$esperadoALaFecha', '$totalCobrado'] }] },
+          leTocaHoy: { $gt: ['$esperadoALaFecha', 0] },
+          diasSinPagar: {
+            $cond: [
+              { $ifNull: ['$ultimoPago.fecha', false] },
+              { $dateDiff: { startDate: '$ultimoPago.fecha', endDate: fin, unit: 'day' } },
+              { $dateDiff: { startDate: '$fechaInicio', endDate: fin, unit: 'day' } },
+            ],
+          },
+        },
+      },
+      { $sort: { atraso: -1, nombre: 1 } },
+    ]);
+
+    // Clientes que ya terminaron: sin préstamos activos y con alguno completado
+    const terminados = await PrestamoModel.aggregate([
+      { $match: { estado: 'completado', deletedAt: null } },
+      {
+        $group: {
+          _id: '$cliente',
+          prestamosPagados: { $sum: 1 },
+          totalPagado: { $sum: '$totalCobrado' },
+          ultimaFecha: { $max: '$updatedAt' },
+        },
+      },
+      {
+        $lookup: {
+          from: 'prestamos',
+          let: { cli: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$cliente', '$$cli'] },
+                estado: 'activo',
+                deletedAt: null,
+              },
+            },
+            { $limit: 1 },
+          ],
+          as: 'vigentes',
+        },
+      },
+      { $match: { 'vigentes.0': { $exists: false } } },
+      { $lookup: { from: 'clientes', localField: '_id', foreignField: '_id', as: 'c' } },
+      { $unwind: '$c' },
+      { $match: { 'c.deletedAt': null } },
+      {
+        $project: {
+          clienteId: '$_id',
+          nombre: '$c.nombre',
+          celular: '$c.celular',
+          barrio: '$c.barrio',
+          prestamosPagados: 1,
+          totalPagado: 1,
+          ultimaFecha: 1,
+        },
+      },
+      { $sort: { ultimaFecha: -1 } },
+    ]);
+
+    // Reparto por prioridad: un cliente aparece en un solo grupo
+    const pagaronHoy = activos.filter((p) => p.pagadoHoy);
+    const restantes = activos.filter((p) => !p.pagadoHoy);
+    const enMora = restantes.filter((p) => p.diasSinPagar >= 2 && p.atraso > 0);
+    const sinMora = restantes.filter((p) => !(p.diasSinPagar >= 2 && p.atraso > 0));
+    const debenHoy = sinMora.filter((p) => p.leTocaHoy);
+    const alDia = sinMora.filter((p) => !p.leTocaHoy);
+
+    const resumir = (lista: Array<Record<string, number>>, campo: string) => ({
+      cantidad: lista.length,
+      monto: lista.reduce((a, x) => a + (Number(x[campo]) || 0), 0),
+    });
+
+    return {
+      pagaronHoy: { ...resumir(pagaronHoy, 'montoCobradoHoy'), clientes: pagaronHoy },
+      enMora: { ...resumir(enMora, 'atraso'), clientes: enMora },
+      debenHoy: { ...resumir(debenHoy, 'cuota'), clientes: debenHoy },
+      alDia: { ...resumir(alDia, 'saldoPendiente'), clientes: alDia },
+      terminados: { ...resumir(terminados, 'totalPagado'), clientes: terminados },
+      totales: {
+        conPrestamoActivo: activos.length,
+        clientesActivos: new Set(activos.map((p) => String(p.clienteId))).size,
+      },
+    };
+  }
+
   async getClientesACobrarHoy() {
     const { inicio, fin } = rangoHoy();
 

@@ -315,7 +315,8 @@ export default function ClienteDetailPage({ params }: { params: Promise<{ id: st
         <div
           style={{
             position: 'fixed', inset: 0, background: 'rgb(0 0 0 / 0.65)',
-            zIndex: 300, overflowY: 'auto', padding: '20px 16px',
+            zIndex: 300, overflowY: 'auto',
+            padding: '16px 16px calc(28px + var(--bottomnav-height) + var(--safe-area-bottom))',
             display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
           }}
           onClick={() => setEditando(false)}
@@ -406,8 +407,8 @@ export default function ClienteDetailPage({ params }: { params: Promise<{ id: st
         <div
           style={{
             position: 'fixed', inset: 0, background: 'rgb(0 0 0 / 0.65)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 300, padding: '20px',
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflowY: 'auto',
+            zIndex: 300, padding: '16px 16px calc(28px + var(--bottomnav-height) + var(--safe-area-bottom))',
           }}
           onClick={() => setShowDeleteModal(false)}
         >

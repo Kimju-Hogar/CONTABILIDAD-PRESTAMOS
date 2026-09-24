@@ -583,8 +583,11 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
           style={{
             position: 'fixed', inset: 0,
             background: 'rgb(0 0 0 / 0.65)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 400, padding: '20px 16px',
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+            // Scroll propio y aire abajo: si el formulario es mas alto que la
+            // pantalla, el boton de guardar tiene que seguir siendo alcanzable
+            overflowY: 'auto',
+            zIndex: 400, padding: '16px 16px calc(28px + var(--bottomnav-height) + var(--safe-area-bottom))',
           }}
           onClick={() => setCuotaDetalle(null)}
         >
@@ -697,9 +700,11 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
           style={{
             position: 'fixed', inset: 0,
             background: 'rgb(0 0 0 / 0.65)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 300, padding: '20px 16px',
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+            // Scroll propio y aire abajo: si el formulario es mas alto que la
+            // pantalla, el boton de guardar tiene que seguir siendo alcanzable
             overflowY: 'auto',
+            zIndex: 300, padding: '16px 16px calc(28px + var(--bottomnav-height) + var(--safe-area-bottom))',
           }}
           onClick={() => setShowCancelModal(false)}
         >
@@ -785,8 +790,11 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
           style={{
             position: 'fixed', inset: 0,
             background: 'rgb(0 0 0 / 0.65)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 300, padding: '20px 16px',
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+            // Scroll propio y aire abajo: si el formulario es mas alto que la
+            // pantalla, el boton de guardar tiene que seguir siendo alcanzable
+            overflowY: 'auto',
+            zIndex: 300, padding: '16px 16px calc(28px + var(--bottomnav-height) + var(--safe-area-bottom))',
           }}
           onClick={() => setShowDeleteModal(false)}
         >
@@ -852,8 +860,11 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
           style={{
             position: 'fixed', inset: 0,
             background: 'rgb(0 0 0 / 0.65)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 300, padding: '20px 16px',
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+            // Scroll propio y aire abajo: si el formulario es mas alto que la
+            // pantalla, el boton de guardar tiene que seguir siendo alcanzable
+            overflowY: 'auto',
+            zIndex: 300, padding: '16px 16px calc(28px + var(--bottomnav-height) + var(--safe-area-bottom))',
           }}
           onClick={() => setShowDeleteCobroModal(null)}
         >
@@ -900,9 +911,11 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
           style={{
             position: 'fixed', inset: 0,
             background: 'rgb(0 0 0 / 0.65)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 300, padding: '20px 16px',
-            overflowY: 'auto'
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+            // Scroll propio y aire abajo: si el formulario es mas alto que la
+            // pantalla, el boton de guardar tiene que seguir siendo alcanzable
+            overflowY: 'auto',
+            zIndex: 300, padding: '16px 16px calc(28px + var(--bottomnav-height) + var(--safe-area-bottom))',
           }}
           onClick={() => setShowEditModal(false)}
         >
@@ -975,8 +988,11 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
           style={{
             position: 'fixed', inset: 0,
             background: 'rgb(0 0 0 / 0.65)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 300, padding: '20px 16px',
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+            // Scroll propio y aire abajo: si el formulario es mas alto que la
+            // pantalla, el boton de guardar tiene que seguir siendo alcanzable
+            overflowY: 'auto',
+            zIndex: 300, padding: '16px 16px calc(28px + var(--bottomnav-height) + var(--safe-area-bottom))',
           }}
           onClick={() => setShowPapeleriaModal(false)}
         >

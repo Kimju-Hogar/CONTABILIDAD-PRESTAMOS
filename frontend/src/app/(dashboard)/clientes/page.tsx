@@ -2,180 +2,307 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import Link from 'next/link';
-import { Plus, Search, ChevronRight, Phone, User } from 'lucide-react';
+import {
+  Plus, Search, ChevronRight, Phone, User, Loader2, AlertTriangle,
+  CheckCircle2, Clock, CircleCheck, List,
+} from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { useDebounce } from '@/hooks/useDebounce';
+import { formatCOP } from '@/lib/utils';
 
-type Estado = 'activo' | 'inactivo' | 'moroso' | 'cancelado';
+// ─── Tipos ────────────────────────────────────────────────────
+interface FilaActivo {
+  prestamoId: string;
+  clienteId: string;
+  nombre: string;
+  celular?: string;
+  barrio?: string;
+  cuota: number;
+  saldoPendiente: number;
+  pagadoHoy: boolean;
+  montoCobradoHoy: number;
+  atraso: number;
+  diasSinPagar: number;
+}
 
-const ESTADO_COLORS: Record<Estado, string> = {
-  activo: 'badge-success',
-  moroso: 'badge-danger',
-  inactivo: 'badge-muted',
-  cancelado: 'badge-muted',
-};
+interface FilaTerminado {
+  clienteId: string;
+  nombre: string;
+  celular?: string;
+  barrio?: string;
+  prestamosPagados: number;
+  totalPagado: number;
+}
 
-const ESTADO_LABELS: Record<Estado, string> = {
-  activo: 'Activo',
-  moroso: 'En mora',
-  inactivo: 'Inactivo',
-  cancelado: 'Cancelado',
-};
+interface Grupo<T> { cantidad: number; monto: number; clientes: T[] }
 
+interface Tablero {
+  pagaronHoy: Grupo<FilaActivo>;
+  enMora: Grupo<FilaActivo>;
+  debenHoy: Grupo<FilaActivo>;
+  alDia: Grupo<FilaActivo>;
+  terminados: Grupo<FilaTerminado>;
+  totales: { conPrestamoActivo: number; clientesActivos: number };
+}
+
+type GrupoId = 'debenHoy' | 'enMora' | 'pagaronHoy' | 'alDia' | 'terminados' | 'todos';
+
+const GRUPOS: Array<{
+  id: GrupoId; label: string; icono: React.ElementType; color: string; etiquetaMonto: string;
+}> = [
+  { id: 'debenHoy',   label: 'Deben hoy',  icono: Clock,       color: '#4f46e5', etiquetaMonto: 'Suma de cuotas' },
+  { id: 'enMora',     label: 'En mora',    icono: AlertTriangle, color: '#ef4444', etiquetaMonto: 'Atraso total' },
+  { id: 'pagaronHoy', label: 'Pagaron',    icono: CheckCircle2, color: '#10b981', etiquetaMonto: 'Recogido hoy' },
+  { id: 'alDia',      label: 'Al día',     icono: CircleCheck,  color: '#0ea5e9', etiquetaMonto: 'Saldo en calle' },
+  { id: 'terminados', label: 'Terminaron', icono: User,         color: '#64748b', etiquetaMonto: 'Ya pagaron' },
+  { id: 'todos',      label: 'Todos',      icono: List,         color: '#64748b', etiquetaMonto: '' },
+];
+
+// ─── Tarjeta de un cliente con préstamo vivo ──────────────────
+function TarjetaActivo({ c, grupo }: { c: FilaActivo; grupo: GrupoId }) {
+  const detalle =
+    grupo === 'pagaronHoy' ? { texto: `Pagó ${formatCOP(c.montoCobradoHoy)}`, color: '#10b981' }
+    : grupo === 'enMora'   ? { texto: `${c.diasSinPagar} días sin pagar · debe ${formatCOP(c.atraso)}`, color: '#ef4444' }
+    : grupo === 'debenHoy' ? { texto: `Cuota de ${formatCOP(c.cuota)}`, color: 'var(--text-secondary)' }
+    : { texto: `Saldo ${formatCOP(c.saldoPendiente)}`, color: 'var(--text-secondary)' };
+
+  return (
+    <Link href={`/prestamos/${c.prestamoId}`} style={{ textDecoration: 'none' }}>
+      <div className="card" style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{
+            margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
+            {c.nombre}
+          </p>
+          <p style={{ margin: '2px 0 0', fontSize: 11.5, color: detalle.color, fontWeight: 600 }}>
+            {detalle.texto}
+          </p>
+          {c.barrio && (
+            <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>{c.barrio}</p>
+          )}
+        </div>
+        {c.celular && (
+          <a
+            href={`tel:${c.celular}`}
+            className="btn-icon"
+            onClick={(e) => e.stopPropagation()}
+            aria-label={`Llamar a ${c.nombre}`}
+          >
+            <Phone size={16} color="var(--brand-500)" />
+          </a>
+        )}
+        <ChevronRight size={16} color="var(--text-muted)" />
+      </div>
+    </Link>
+  );
+}
+
+function TarjetaTerminado({ c }: { c: FilaTerminado }) {
+  return (
+    <Link href={`/clientes/${c.clienteId}`} style={{ textDecoration: 'none' }}>
+      <div className="card" style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <CheckCircle2 size={17} color="var(--success-500)" style={{ flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{
+            margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
+            {c.nombre}
+          </p>
+          <p style={{ margin: '2px 0 0', fontSize: 11.5, color: 'var(--text-muted)' }}>
+            {c.prestamosPagados} préstamo{c.prestamosPagados === 1 ? '' : 's'} pagado
+            {c.prestamosPagados === 1 ? '' : 's'} · {formatCOP(c.totalPagado)}
+          </p>
+        </div>
+        <ChevronRight size={16} color="var(--text-muted)" />
+      </div>
+    </Link>
+  );
+}
+
+// ─── Página ───────────────────────────────────────────────────
 export default function ClientesPage() {
+  const [grupo, setGrupo] = useState<GrupoId>('debenHoy');
   const [busqueda, setBusqueda] = useState('');
-  const [estadoFiltro, setEstadoFiltro] = useState<Estado | ''>('');
-  const debouncedBusqueda = useDebounce(busqueda, 400);
+  const debounced = useDebounce(busqueda, 400);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['clientes', debouncedBusqueda, estadoFiltro],
-    queryFn: () => apiClient.get('/api/clientes', {
-      params: { busqueda: debouncedBusqueda || undefined, estado: estadoFiltro || undefined, limit: 50 }
-    }).then((r) => r.data),
+  const { data: tablero, isLoading } = useQuery<Tablero>({
+    queryKey: ['tablero-clientes'],
+    queryFn: () => apiClient.get('/api/dashboard/tablero-clientes').then((r) => r.data.data),
+    refetchInterval: 60_000,
+  });
+
+  // El listado completo sólo se pide cuando se necesita
+  const { data: todos } = useQuery({
+    queryKey: ['clientes', debounced],
+    queryFn: () => apiClient
+      .get('/api/clientes', { params: { busqueda: debounced || undefined, limit: 100 } })
+      .then((r) => r.data),
+    enabled: grupo === 'todos' || debounced.length > 0,
     staleTime: 30_000,
   });
 
-  const clientes: Cliente[] = data?.data ?? [];
+  const buscando = debounced.length > 0;
+  const grupoActual = GRUPOS.find((g) => g.id === grupo)!;
+
+  const contarGrupo = (id: GrupoId): number => {
+    if (!tablero) return 0;
+    if (id === 'todos') return tablero.totales.clientesActivos;
+    return tablero[id].cantidad;
+  };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* ─── Encabezado ─────────────────────────────────────── */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>Clientes</h1>
           <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
-            {data?.pagination?.total ?? 0} registros
+            {tablero ? `${tablero.totales.clientesActivos} con préstamo activo` : 'Cargando…'}
           </p>
         </div>
         <Link href="/clientes/nuevo">
-          <button className="btn-primary" style={{ width: 'auto', padding: '10px 16px' }}>
+          <button className="btn-primary" style={{ width: 'auto', padding: '10px 16px' }} aria-label="Nuevo cliente">
             <Plus size={18} />
           </button>
         </Link>
       </div>
 
-      {/* Buscador */}
+      {/* ─── Buscador ───────────────────────────────────────── */}
       <div style={{ position: 'relative' }}>
-        <Search size={18} style={{
-          position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)',
-          color: 'var(--text-muted)',
-        }} />
+        <Search
+          size={17}
+          color="var(--text-muted)"
+          style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)' }}
+        />
         <input
-          type="search"
-          placeholder="Buscar por nombre, cédula o celular..."
           className="input-field"
-          style={{ paddingLeft: 44 }}
+          style={{ paddingLeft: 42 }}
+          placeholder="Buscar por nombre o cédula"
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
-          autoComplete="off"
         />
       </div>
 
-      {/* Filtros de estado */}
-      <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
-        {(['', 'activo', 'moroso', 'inactivo'] as const).map((estado) => (
-          <button
-            key={estado || 'todos'}
-            onClick={() => setEstadoFiltro(estado as Estado | '')}
-            style={{
-              flex: '0 0 auto',
-              padding: '6px 14px',
-              borderRadius: 'var(--radius-full)',
-              border: '1.5px solid',
-              borderColor: estadoFiltro === estado ? 'var(--brand-500)' : 'var(--border)',
-              background: estadoFiltro === estado ? 'var(--brand-500)' : 'transparent',
-              color: estadoFiltro === estado ? 'white' : 'var(--text-secondary)',
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {estado === '' ? 'Todos' : ESTADO_LABELS[estado]}
-          </button>
-        ))}
-      </div>
-
-      {/* Lista */}
-      {isLoading ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="skeleton" style={{ height: 72, borderRadius: 'var(--radius-lg)' }} />
-          ))}
+      {/* ─── Grupos ─────────────────────────────────────────── */}
+      {!buscando && (
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8,
+        }}>
+          {GRUPOS.map((g) => {
+            const activo = grupo === g.id;
+            const Icono = g.icono;
+            return (
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => setGrupo(g.id)}
+                style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                  padding: '10px 4px',
+                  borderRadius: 'var(--radius-md)',
+                  border: `1.5px solid ${activo ? g.color : 'var(--border)'}`,
+                  background: activo ? `${g.color}1a` : 'var(--bg-card)',
+                  cursor: 'pointer', minWidth: 0,
+                }}
+              >
+                <Icono size={16} color={activo ? g.color : 'var(--text-muted)'} />
+                <span style={{
+                  fontSize: 17, fontWeight: 800,
+                  color: activo ? g.color : 'var(--text-primary)', lineHeight: 1,
+                }}>
+                  {contarGrupo(g.id)}
+                </span>
+                <span style={{
+                  fontSize: 10, fontWeight: 600, color: 'var(--text-muted)',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%',
+                }}>
+                  {g.label}
+                </span>
+              </button>
+            );
+          })}
         </div>
-      ) : clientes.length === 0 ? (
-        <div className="empty-state">
-          <User size={48} color="var(--border)" />
-          <p style={{ margin: 0, fontWeight: 600 }}>No se encontraron clientes</p>
-          <p style={{ margin: 0, fontSize: 13 }}>Agrega tu primer cliente con el botón +</p>
+      )}
+
+      {/* ─── Total en plata del grupo ───────────────────────── */}
+      {!buscando && tablero && grupo !== 'todos' && grupoActual.etiquetaMonto && (
+        <div className="card" style={{
+          padding: '11px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          borderLeft: `3px solid ${grupoActual.color}`,
+        }}>
+          <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+            {grupoActual.etiquetaMonto}
+          </span>
+          <span style={{ fontSize: 16, fontWeight: 800, color: grupoActual.color }}>
+            {formatCOP(tablero[grupo].monto)}
+          </span>
+        </div>
+      )}
+
+      {/* ─── Listado ────────────────────────────────────────── */}
+      {isLoading && !tablero ? (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
+          <Loader2 size={26} color="var(--brand-500)" style={{ animation: 'spin 1s linear infinite' }} />
+        </div>
+      ) : buscando || grupo === 'todos' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {((todos?.data ?? []) as Array<{ _id: string; nombre: string; cedula: string; celular?: string; estado: string }>)
+            .map((c) => (
+              <Link key={c._id} href={`/clientes/${c._id}`} style={{ textDecoration: 'none' }}>
+                <div className="card" style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{
+                      margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)',
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    }}>
+                      {c.nombre}
+                    </p>
+                    <p style={{ margin: '2px 0 0', fontSize: 11.5, color: 'var(--text-muted)' }}>
+                      CC {c.cedula}
+                    </p>
+                  </div>
+                  <ChevronRight size={16} color="var(--text-muted)" />
+                </div>
+              </Link>
+            ))}
+          {(todos?.data ?? []).length === 0 && (
+            <div className="empty-state">
+              <User size={28} color="var(--text-muted)" />
+              <p style={{ marginTop: 8, fontSize: 13.5 }}>Ningún cliente con esa búsqueda.</p>
+            </div>
+          )}
+        </div>
+      ) : grupo === 'terminados' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {tablero!.terminados.clientes.map((c) => <TarjetaTerminado key={c.clienteId} c={c} />)}
+          {tablero!.terminados.cantidad === 0 && (
+            <div className="empty-state">
+              <User size={28} color="var(--text-muted)" />
+              <p style={{ marginTop: 8, fontSize: 13.5 }}>Todavía nadie ha terminado de pagar.</p>
+            </div>
+          )}
         </div>
       ) : (
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          {clientes.map((cliente) => (
-            <Link
-              key={cliente._id}
-              href={`/clientes/${cliente._id}`}
-              className="list-item"
-            >
-              {/* Avatar */}
-              <div style={{
-                width: 44, height: 44, flexShrink: 0,
-                borderRadius: '50%',
-                background: 'var(--brand-100)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                overflow: 'hidden',
-              }}>
-                {cliente.fotos?.cliente ? (
-                  <img
-                    src={cliente.fotos.cliente}
-                    alt={cliente.nombre}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
-                ) : (
-                  <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--brand-text)' }}>
-                    {cliente.nombre[0].toUpperCase()}
-                  </span>
-                )}
-              </div>
-
-              {/* Info */}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ margin: 0, fontWeight: 600, fontSize: 15,
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {cliente.nombre}
-                </p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{cliente.celular}</span>
-                  {cliente.prestamosActivos > 0 && (
-                    <span style={{ fontSize: 11, background: 'var(--brand-50)', color: 'var(--brand-text)',
-                      padding: '1px 6px', borderRadius: 99, fontWeight: 600 }}>
-                      {cliente.prestamosActivos} activo{cliente.prestamosActivos > 1 ? 's' : ''}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Estado + chevron */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                <span className={`badge ${ESTADO_COLORS[cliente.estado as Estado] ?? 'badge-muted'}`}>
-                  {ESTADO_LABELS[cliente.estado as Estado] ?? cliente.estado}
-                </span>
-                <ChevronRight size={16} color="var(--text-muted)" />
-              </div>
-            </Link>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {tablero![grupo as 'debenHoy' | 'enMora' | 'pagaronHoy' | 'alDia'].clientes.map((c) => (
+            <TarjetaActivo key={c.prestamoId} c={c} grupo={grupo} />
           ))}
+          {tablero![grupo as 'debenHoy' | 'enMora' | 'pagaronHoy' | 'alDia'].cantidad === 0 && (
+            <div className="empty-state">
+              <CheckCircle2 size={28} color="var(--success-500)" />
+              <p style={{ marginTop: 8, fontSize: 13.5 }}>
+                {grupo === 'enMora' ? 'Nadie está en mora. Bien ahí.'
+                  : grupo === 'debenHoy' ? 'Nadie tiene cuota pendiente hoy.'
+                  : grupo === 'pagaronHoy' ? 'Todavía no ha pagado nadie hoy.'
+                  : 'Sin clientes en este grupo.'}
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
-}
-
-interface Cliente {
-  _id: string;
-  nombre: string;
-  cedula: string;
-  celular: string;
-  estado: string;
-  prestamosActivos: number;
-  fotos?: { cliente?: string };
 }

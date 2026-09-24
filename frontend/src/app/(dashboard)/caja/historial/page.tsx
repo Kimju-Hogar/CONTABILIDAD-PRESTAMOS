@@ -1,17 +1,22 @@
 'use client';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import Link from 'next/link';
 import {
   Loader2, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle,
-  Unlock, Wallet,
+  Unlock, Wallet, FileText,
 } from 'lucide-react';
 import { apiClient } from '@/services/api';
-import { formatCOP, formatFechaCO } from '@/lib/utils';
+import { formatCOP, formatFechaCO, formatFechaHoraCO } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
 import { StatRow, Sep } from '@/components/shared/Stats';
 
 interface Cierre {
   _id: string;
+  abiertoEn?: string;
+  cerradoEn?: string;
+  abiertoPor?: { nombre: string };
+  cerradoPor?: { nombre: string };
   fechaKey: string;
   estado: 'abierto' | 'cerrado';
   baseInicial: number;
@@ -120,9 +125,10 @@ export default function HistorialCajaPage() {
                   {formatFechaCO(`${c.fechaKey}T12:00:00`)}
                 </p>
                 <p style={{ margin: 0, fontSize: 11.5, color: 'var(--text-muted)' }}>
-                  {esAdmin && c.cobrador ? `${c.cobrador.nombre} · ` : ''}
-                  {c.estado === 'abierto' ? 'Sin cerrar · ' : ''}
-                  Recogió {formatCOP(c.totalCobrado)}
+                  {/* Siempre se dice de quién es la caja: los tres roles ven lo mismo */}
+                  {c.cobrador?.nombre ?? 'Sin asignar'}
+                  {c.estado === 'abierto' ? ' · sin cerrar' : ''}
+                  {' · recogió '}{formatCOP(c.totalCobrado)}
                 </p>
               </div>
 
@@ -179,11 +185,32 @@ export default function HistorialCajaPage() {
                       />
                     </>
                   )}
+                  {/* Quién lo hizo y cuándo: lo ven las tres cuentas por igual */}
+                  <Sep />
+                  <p style={{ margin: 0, fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                    Caja de <strong>{c.cobrador?.nombre ?? 'sin asignar'}</strong>
+                    {c.abiertoPor?.nombre && <> · abierta por {c.abiertoPor.nombre}</>}
+                    {c.abiertoEn && <> el {formatFechaHoraCO(c.abiertoEn)}</>}
+                    {c.estado === 'cerrado' && c.cerradoPor?.nombre && (
+                      <> · cerrada por <strong>{c.cerradoPor.nombre}</strong></>
+                    )}
+                    {c.estado === 'cerrado' && c.cerradoEn && <> el {formatFechaHoraCO(c.cerradoEn)}</>}
+                  </p>
+
                   {c.observaciones && (
                     <p style={{ margin: '8px 0 0', fontSize: 12.5, color: 'var(--text-muted)' }}>
                       {c.observaciones}
                     </p>
                   )}
+
+                  <Link
+                    href={`/caja/dia?fecha=${c.fechaKey}&cobradorId=${c.cobrador?._id ?? ''}`}
+                    style={{ textDecoration: 'none', display: 'block', marginTop: 10 }}
+                  >
+                    <button className="btn-secondary" style={{ fontSize: 13 }}>
+                      <FileText size={15} /> Ver el detalle del día
+                    </button>
+                  </Link>
                   {c.estado === 'abierto' && (
                     <button
                       className="btn-secondary"

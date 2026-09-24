@@ -6,22 +6,16 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 
-const NAV_COBRADOR = [
-  { href: '/',          icon: Home,        label: 'Inicio' },
-  { href: '/clientes',  icon: Users,       label: 'Clientes' },
-  { href: '/cobros',    icon: DollarSign,  label: 'Cobros' },
-  { href: '/prestamos', icon: CreditCard,  label: 'Préstamos' },
-  { href: '/caja',      icon: Wallet,      label: 'Caja' },
-];
+const INICIO    = { href: '/',          icon: Home,       label: 'Inicio' };
+const CLIENTES  = { href: '/clientes',  icon: Users,      label: 'Clientes' };
+const COBROS    = { href: '/cobros',    icon: DollarSign, label: 'Cobros' };
+const PRESTAMOS = { href: '/prestamos', icon: CreditCard, label: 'Préstamos' };
+const CAJA      = { href: '/caja',      icon: Wallet,     label: 'Caja' };
+const PANEL     = { href: '/admin',     icon: BarChart3,  label: 'Panel' };
 
-// Admin y auditor cambian Clientes por el panel: las cifras pesan más que el listado
-const NAV_ADMIN = [
-  { href: '/',          icon: Home,        label: 'Inicio' },
-  { href: '/cobros',    icon: DollarSign,  label: 'Cobros' },
-  { href: '/prestamos', icon: CreditCard,  label: 'Préstamos' },
-  { href: '/caja',      icon: Wallet,      label: 'Caja' },
-  { href: '/admin',     icon: BarChart3,   label: 'Panel' },
-];
+// Clientes va en los tres roles; admin y auditor suman el panel
+const NAV_COBRADOR = [INICIO, CLIENTES, COBROS, PRESTAMOS, CAJA];
+const NAV_ADMIN    = [INICIO, CLIENTES, COBROS, PRESTAMOS, CAJA, PANEL];
 
 export function BottomNav() {
   const pathname = usePathname();
@@ -30,13 +24,18 @@ export function BottomNav() {
   const navItems = mandaEnTodo ? NAV_ADMIN : NAV_COBRADOR;
 
   return (
-    <nav className="bottom-nav" role="navigation" aria-label="Navegación principal">
+    <nav
+      className="bottom-nav"
+      role="navigation"
+      aria-label="Navegación principal"
+      style={{ ['--nav-items' as string]: navItems.length }}
+    >
       {navItems.map(({ href, icon: Icon, label }) => {
         const isActive = pathname === href || (href !== '/' && pathname.startsWith(href));
         return (
           <Link key={href} href={href} className={`nav-item ${isActive ? 'active' : ''}`}>
             <Icon
-              size={22}
+              size={21}
               strokeWidth={isActive ? 2.5 : 1.8}
               style={{ color: isActive ? 'var(--brand-500)' : 'var(--text-muted)' }}
             />

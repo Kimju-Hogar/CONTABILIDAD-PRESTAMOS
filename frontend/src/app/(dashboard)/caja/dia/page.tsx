@@ -1,5 +1,6 @@
 'use client';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
   Loader2, FileDown, Calculator, TrendingUp, TrendingDown, Receipt,
@@ -59,21 +60,25 @@ function moverDia(fechaKey: string, dias: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-export default function ReporteDiaPage() {
-  const [fecha, setFecha] = useState(fechaHoyISO());
+function ReporteDia() {
+  // Se puede llegar desde el historial con ?fecha=YYYY-MM-DD&cobradorId=...
+  const params = useSearchParams();
+  const cobradorId = params.get('cobradorId') ?? '';
+  const sufijoCobrador = cobradorId ? `&cobradorId=${cobradorId}` : '';
+  const [fecha, setFecha] = useState(params.get('fecha') ?? fechaHoyISO());
   const [descargando, setDescargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery<Detalle>({
-    queryKey: ['caja-detalle', fecha],
-    queryFn: () => apiClient.get(`/api/caja/detalle?fecha=${fecha}`).then((r) => r.data.data),
+    queryKey: ['caja-detalle', fecha, cobradorId],
+    queryFn: () => apiClient.get(`/api/caja/detalle?fecha=${fecha}${sufijoCobrador}`).then((r) => r.data.data),
   });
 
   const descargar = async () => {
     setDescargando(true);
     setError(null);
     try {
-      const res = await apiClient.get(`/api/caja/dia.pdf?fecha=${fecha}`, { responseType: 'blob' });
+      const res = await apiClient.get(`/api/caja/dia.pdf?fecha=${fecha}${sufijoCobrador}`, { responseType: 'blob' });
       const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
       const a = document.createElement('a');
       a.href = url;
@@ -326,5 +331,14 @@ export default function ReporteDiaPage() {
         </>
       )}
     </div>
+  );
+}
+
+/** useSearchParams necesita un limite de Suspense en el App Router. */
+export default function ReporteDiaPage() {
+  return (
+    <Suspense fallback={null}>
+      <ReporteDia />
+    </Suspense>
   );
 }

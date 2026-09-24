@@ -127,8 +127,11 @@ function Modal({
 
 // ─── Página ───────────────────────────────────────────────────
 export default function CajaPage() {
-  const { puedeEliminar } = useRol();
+  const { puedeEliminar, esAdmin } = useRol();
   const queryClient = useQueryClient();
+  // Admin y auditor pueden mirar (y operar) la caja de cualquier cobrador
+  const [cobradorId, setCobradorId] = useState('');
+  const sufijo = cobradorId ? `?cobradorId=${cobradorId}` : '';
   const [modal, setModal] = useState<'abrir' | 'cerrar' | 'movimiento' | null>(null);
   const [base, setBase] = useState('');
   const [contado, setContado] = useState('');
@@ -139,9 +142,16 @@ export default function CajaPage() {
   const [movDesc, setMovDesc] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  const { data: usuarios } = useQuery<Array<{ _id: string; nombre: string; rol: string }>>({
+    queryKey: ['admin-usuarios'],
+    queryFn: () => apiClient.get('/api/admin/usuarios').then((r) => r.data.data),
+    enabled: esAdmin,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const { data, isLoading } = useQuery<EstadoCaja>({
-    queryKey: ['caja-estado'],
-    queryFn: () => apiClient.get('/api/caja/estado').then((r) => r.data.data),
+    queryKey: ['caja-estado', cobradorId],
+    queryFn: () => apiClient.get(`/api/caja/estado${sufijo}`).then((r) => r.data.data),
     refetchInterval: 60_000,
   });
 
@@ -157,13 +167,13 @@ export default function CajaPage() {
   };
 
   const abrir = useMutation({
-    mutationFn: () => apiClient.post('/api/caja/abrir', { baseInicial: Number(base) || 0 }),
+    mutationFn: () => apiClient.post(`/api/caja/abrir${sufijo}`, { baseInicial: Number(base) || 0 }),
     onSuccess: () => { refrescar(); setModal(null); setBase(''); setError(null); },
     onError: manejarError,
   });
 
   const cerrar = useMutation({
-    mutationFn: () => apiClient.post('/api/caja/cerrar', {
+    mutationFn: () => apiClient.post(`/api/caja/cerrar${sufijo}`, {
       saldoContado: Number(contado) || 0,
       fechaKey: data?.fechaKey,
       observaciones: obsCierre || undefined,
@@ -173,7 +183,7 @@ export default function CajaPage() {
   });
 
   const crearMovimiento = useMutation({
-    mutationFn: () => apiClient.post('/api/caja/movimientos', {
+    mutationFn: () => apiClient.post(`/api/caja/movimientos${sufijo}`, {
       tipo: movTipo,
       concepto: movConcepto,
       monto: Number(movMonto) || 0,
@@ -221,6 +231,25 @@ export default function CajaPage() {
           {cerrada ? 'Cerrada' : abierta ? 'Abierta' : 'Sin abrir'}
         </span>
       </div>
+
+      {/* Admin y auditor eligen de quién es la caja que están viendo */}
+      {esAdmin && (usuarios ?? []).length > 1 && (
+        <div>
+          <label className="input-label">Caja de</label>
+          <select
+            className="input-field"
+            value={cobradorId}
+            onChange={(e) => setCobradorId(e.target.value)}
+          >
+            <option value="">La mía</option>
+            {(usuarios ?? []).map((u) => (
+              <option key={u._id} value={u._id}>
+                {u.nombre} · {u.rol}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {error && (
         <div className="card" style={{

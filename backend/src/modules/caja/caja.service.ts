@@ -301,7 +301,9 @@ export class CajaService {
     const skip = (filtros.page - 1) * filtros.limit;
     const [filas, total] = await Promise.all([
       CajaDiaModel.find(query)
-        .populate('cobrador', 'nombre email')
+        .populate('cobrador', 'nombre email rol')
+        .populate('cerradoPor', 'nombre email rol')
+        .populate('abiertoPor', 'nombre')
         .sort({ fechaKey: -1 })
         .skip(skip)
         .limit(filtros.limit)

@@ -181,7 +181,8 @@ body {
   background: var(--bg-card);
   border-top: 1px solid var(--border);
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  /* El numero de pestañas cambia segun el rol */
+  grid-template-columns: repeat(var(--nav-items, 5), 1fr);
   z-index: 100;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -203,6 +204,21 @@ body {
   transition: color var(--transition);
   -webkit-tap-highlight-color: transparent;
   text-decoration: none;
+  /* Necesario para que el texto se recorte dentro de la celda del grid */
+  min-width: 0;
+}
+
+/* Con 6 pestañas el espacio aprieta: la etiqueta se recorta antes de romper */
+.nav-item span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bottom-nav[style*="--nav-items: 6"] .nav-item {
+  padding: 8px 2px;
+  font-size: 9.5px;
 }
 
 .nav-item.active {

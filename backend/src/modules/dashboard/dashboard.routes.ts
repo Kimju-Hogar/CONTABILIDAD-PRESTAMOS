@@ -36,6 +36,12 @@ router.get('/cobrar-hoy', async (_req: Request, res: Response, next: NextFunctio
   } catch (error) { next(error); }
 });
 
+router.get('/tablero-clientes', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    ResponseHelper.success(res, await dashboardService.getTableroClientes());
+  } catch (error) { next(error); }
+});
+
 // Parámetros del negocio que el frontend necesita para previsualizar cálculos
 router.get('/configuracion', async (_req: Request, res: Response, next: NextFunction) => {
   try {
