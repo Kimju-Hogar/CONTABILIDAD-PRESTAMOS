@@ -10,7 +10,7 @@ import {
   NotFoundError,
   AppError,
 } from '../../shared/middleware/error.middleware';
-import type { JwtPayload } from '../../shared/middleware/auth.middleware';
+import type { JwtPayload, Rol } from '../../shared/middleware/auth.middleware';
 import type {
   LoginDto,
   RefreshTokenDto,
@@ -198,7 +198,7 @@ export class AuthService {
   private generateTokens(
     userId: string,
     email: string,
-    rol: 'admin' | 'cobrador',
+    rol: Rol,
     sessionId: string
   ): TokenPair {
     const payload = { email, rol, sessionId };

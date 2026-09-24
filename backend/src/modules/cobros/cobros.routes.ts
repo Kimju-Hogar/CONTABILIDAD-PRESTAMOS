@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { cobrosController } from './cobros.controller';
-import { authMiddleware } from '../../shared/middleware/auth.middleware';
+import { authMiddleware, auditorOnly } from '../../shared/middleware/auth.middleware';
 import { auditMiddleware } from '../../shared/middleware/audit.middleware';
 
 const router = Router();
@@ -24,6 +24,7 @@ router.post(
 
 router.delete(
   '/:id',
+  auditorOnly,
   auditMiddleware({ accion: 'DELETE_COBRO', recurso: 'Cobro', getRecursoId: (r) => r.params['id'] }),
   cobrosController.eliminar.bind(cobrosController)
 );

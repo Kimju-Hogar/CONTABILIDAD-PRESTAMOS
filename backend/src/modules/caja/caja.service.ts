@@ -391,14 +391,18 @@ export class CajaService {
   }
 
   // ─── Detalle de movimientos del día (para el cierre) ────────
-  /** Cobros, préstamos y gastos del día, uno por uno, para revisar el cierre. */
+  /**
+   * El día completo, línea por línea: la caja, cada cobro, cada préstamo, cada
+   * gasto y cada movimiento manual. Es lo que alimenta el reporte diario.
+   */
   async detalleDia(fechaKey: string, cobradorId: string) {
     const { inicio, fin } = rangoDeKey(fechaKey);
     const cobrador = oid(cobradorId);
 
-    const [cobros, prestamos, gastos, movimientos] = await Promise.all([
+    const [cobros, prestamos, gastos, movimientos, caja, totales] = await Promise.all([
       CobroModel.find({ fecha: { $gte: inicio, $lte: fin }, anulado: false, cobrador })
-        .populate('cliente', 'nombre cedula')
+        .populate('cliente', 'nombre cedula celular')
+        .populate('prestamo', 'cuotaDiaria saldoPendiente totalPagar')
         .sort({ fecha: 1 })
         .lean(),
       PrestamoModel.find({
@@ -414,9 +418,36 @@ export class CajaService {
         .sort({ fecha: 1 })
         .lean(),
       this.listarMovimientos(fechaKey, cobradorId),
+      CajaDiaModel.findOne({ cobrador, fechaKey })
+        .populate('cobrador', 'nombre email')
+        .lean(),
+      this.calcularTotalesDia(fechaKey, cobradorId),
     ]);
 
-    return { fechaKey, cobros, prestamos, gastos, movimientos };
+    // Un cierre guardado manda sobre el cálculo en vivo
+    const baseInicial = caja?.baseInicial ?? 0;
+    const esperado = caja?.estado === 'cerrado'
+      ? caja.saldoEsperado
+      : this.saldoEsperado(baseInicial, totales);
+
+    // Cuántos clientes de la ruta pagaron y cuántos no aparecieron
+    const clientesQuePagaron = new Set(cobros.map((c) => String(c.cliente?._id ?? c.cliente))).size;
+
+    return {
+      fechaKey,
+      caja,
+      estado: caja?.estado ?? 'sin_abrir',
+      baseInicial,
+      totales,
+      saldoEsperado: esperado,
+      saldoContado: caja?.saldoContado ?? null,
+      diferencia: caja?.diferencia ?? 0,
+      clientesQuePagaron,
+      cobros,
+      prestamos,
+      gastos,
+      movimientos,
+    };
   }
 }
 

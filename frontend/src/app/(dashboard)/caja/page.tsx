@@ -7,6 +7,7 @@ import {
   FileText, AlertTriangle, CheckCircle2, History, ArrowRight, Calculator, Receipt,
 } from 'lucide-react';
 import { apiClient } from '@/services/api';
+import { useRol } from '@/hooks/useRol';
 import { formatCOP, formatFechaCO } from '@/lib/utils';
 import { StatCard, StatRow, SectionCard, Sep, Segmented } from '@/components/shared/Stats';
 
@@ -126,6 +127,7 @@ function Modal({
 
 // ─── Página ───────────────────────────────────────────────────
 export default function CajaPage() {
+  const { puedeEliminar } = useRol();
   const queryClient = useQueryClient();
   const [modal, setModal] = useState<'abrir' | 'cerrar' | 'movimiento' | null>(null);
   const [base, setBase] = useState('');
@@ -362,7 +364,7 @@ export default function CajaPage() {
               }}>
                 {m.tipo === 'ingreso' ? '+' : '−'}{formatCOP(m.monto)}
               </span>
-              {!cerrada && (
+              {!cerrada && puedeEliminar && (
                 <button
                   className="btn-icon"
                   onClick={() => borrarMovimiento.mutate(m._id)}
@@ -415,6 +417,7 @@ export default function CajaPage() {
       )}
 
       {[
+        { href: '/caja/dia', icon: FileText, label: 'Reporte del día detallado' },
         { href: '/caja/historial', icon: History, label: 'Ver cierres anteriores' },
         { href: '/gastos', icon: Receipt, label: 'Registrar un gasto' },
       ].map(({ href, icon: Icon, label }) => (

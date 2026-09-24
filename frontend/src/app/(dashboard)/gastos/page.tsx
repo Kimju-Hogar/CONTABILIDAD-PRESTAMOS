@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 import { Loader2, Camera, X, Receipt, List, Plus, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiClient } from '@/services/api';
+import { useRol } from '@/hooks/useRol';
 import { formatCOP, fechaHoyISO, formatFechaCO } from '@/lib/utils';
 
 const schema = z.object({
@@ -34,6 +35,7 @@ interface Gasto {
 }
 
 export default function GastosPage() {
+  const { puedeEliminar } = useRol();
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [fotos, setFotos] = useState<File[]>([]);
@@ -303,21 +305,23 @@ export default function GastosPage() {
                         <span style={{ fontWeight: 800, fontSize: 15, color: 'var(--danger-600)' }}>
                           -{formatCOP(g.monto)}
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (confirm('¿Eliminar este gasto?')) eliminarGasto.mutate(g._id);
-                          }}
-                          style={{
-                            background: 'none', border: 'none', padding: 4,
-                            cursor: 'pointer', color: 'var(--text-muted)',
-                            borderRadius: 'var(--radius-sm)',
-                            display: 'flex', alignItems: 'center',
-                          }}
-                          title="Eliminar gasto"
-                        >
-                          <Trash2 size={15} />
-                        </button>
+                        {puedeEliminar && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm('¿Eliminar este gasto?')) eliminarGasto.mutate(g._id);
+                            }}
+                            style={{
+                              background: 'none', border: 'none', padding: 4,
+                              cursor: 'pointer', color: 'var(--text-muted)',
+                              borderRadius: 'var(--radius-sm)',
+                              display: 'flex', alignItems: 'center',
+                            }}
+                            title="Eliminar gasto"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        )}
                       </div>
                     </div>
 

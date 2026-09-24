@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prestamosController } from './prestamos.controller';
-import { authMiddleware, adminOnly } from '../../shared/middleware/auth.middleware';
+import { authMiddleware, adminOnly, auditorOnly } from '../../shared/middleware/auth.middleware';
 import { auditMiddleware } from '../../shared/middleware/audit.middleware';
 
 const router = Router();
@@ -37,7 +37,7 @@ router.put(
 
 router.delete(
   '/:id',
-  adminOnly,
+  auditorOnly,
   auditMiddleware({ accion: 'DELETE_PRESTAMO', recurso: 'Prestamo', getRecursoId: (r) => r.params['id'] }),
   prestamosController.eliminar.bind(prestamosController)
 );

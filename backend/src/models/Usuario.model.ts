@@ -13,7 +13,7 @@ export interface IUsuario extends Document {
   nombre: string;
   email: string;
   password: string;
-  rol: 'admin' | 'cobrador';
+  rol: 'auditor' | 'admin' | 'cobrador';
   activo: boolean;
   ultimoAcceso?: Date;
   sesiones: ISesion[];
@@ -59,7 +59,7 @@ const UsuarioSchema = new Schema<IUsuario>(
     },
     rol: {
       type: String,
-      enum: ['admin', 'cobrador'],
+      enum: ['auditor', 'admin', 'cobrador'],
       default: 'cobrador',
     },
     activo: {

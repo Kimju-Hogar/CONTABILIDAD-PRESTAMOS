@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Phone, MapPin, ChevronRight, CreditCard, Plus, Camera, Loader2, Edit2, Trash2, X, Save } from 'lucide-react';
 import { apiClient } from '@/services/api';
+import { useRol } from '@/hooks/useRol';
 import { formatCOP, formatFechaCO, porcentajeProgreso } from '@/lib/utils';
 
 const ESTADO_COLORS: Record<string, string> = {
@@ -88,6 +89,7 @@ interface EditForm {
 }
 
 export default function ClienteDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { puedeEliminar } = useRol();
   const { id } = use(params);
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -291,8 +293,8 @@ export default function ClienteDetailPage({ params }: { params: Promise<{ id: st
         )}
       </div>
 
-      {/* ── Botón eliminar (solo si no tiene préstamos activos) ── */}
-      {(cliente.prestamosActivos ?? 0) === 0 && (
+      {/* ── Botón eliminar: solo el auditor, y sin préstamos activos ── */}
+      {puedeEliminar && (cliente.prestamosActivos ?? 0) === 0 && (
         <button
           type="button"
           onClick={() => setShowDeleteModal(true)}

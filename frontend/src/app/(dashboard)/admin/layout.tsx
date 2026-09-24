@@ -11,7 +11,8 @@ import { useAuthStore } from '@/stores/authStore';
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { usuario } = useAuthStore();
   const router = useRouter();
-  const esAdmin = usuario?.rol === 'admin';
+  // El auditor manda en todo, así que también entra al panel
+  const esAdmin = usuario?.rol === 'admin' || usuario?.rol === 'auditor';
 
   useEffect(() => {
     if (usuario && !esAdmin) router.replace('/');

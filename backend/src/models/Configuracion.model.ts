@@ -11,6 +11,8 @@ export interface IConfiguracion extends Document {
   papeleriaMinima: number;        // piso de la papelería
   valorCarton: number;            // valor fijo por renovación de cartón
   baseCajaSugerida: number;       // base propuesta al abrir el día
+  /** Desde cuándo cuenta la cuenta de papelería. Lo anterior queda archivado. */
+  fechaCortePapeleria: Date | null;
   moneda: string;
   actualizadoPor?: Types.ObjectId;
   createdAt: Date;
@@ -23,6 +25,7 @@ export const CONFIG_POR_DEFECTO = {
   papeleriaMinima: 5000,
   valorCarton: 5000,
   baseCajaSugerida: 0,
+  fechaCortePapeleria: null as Date | null,
   moneda: 'COP',
 };
 
@@ -39,6 +42,7 @@ const ConfiguracionSchema = new Schema<IConfiguracion>(
     papeleriaMinima: { type: Number, default: CONFIG_POR_DEFECTO.papeleriaMinima, min: 0 },
     valorCarton: { type: Number, default: CONFIG_POR_DEFECTO.valorCarton, min: 0 },
     baseCajaSugerida: { type: Number, default: CONFIG_POR_DEFECTO.baseCajaSugerida, min: 0 },
+    fechaCortePapeleria: { type: Date, default: null },
     moneda: { type: String, default: CONFIG_POR_DEFECTO.moneda },
     actualizadoPor: { type: Schema.Types.ObjectId, ref: 'Usuario' },
   },

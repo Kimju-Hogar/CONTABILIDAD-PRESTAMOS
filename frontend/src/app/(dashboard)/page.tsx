@@ -1,10 +1,10 @@
 'use client';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
   TrendingUp, Users, AlertTriangle, DollarSign, Plus, ArrowRight,
-  Loader2, Phone, CheckCircle2, Clock, Zap, ChevronRight,
+  Loader2, Phone, CheckCircle2, Clock, Zap, ChevronRight, ChevronDown,
 } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { formatCOP, formatFechaCO } from '@/lib/utils';
@@ -70,13 +70,123 @@ interface ClienteHoy {
   cuotaDiaria: number;
   saldoPendiente: number;
   cuotasVencidas: number;
+  /** Plata que debería llevar pagada a la fecha y no ha pagado. */
+  atraso: number;
+  adelanto: number;
+  diasSinPagar: number;
+  ultimoPagoFecha?: string;
   proximaCuota?: { fechaEsperada: string; monto: number; numero: number };
   pagadoHoy: boolean;
   montoCobradoHoy: number;
 }
 
+/**
+ * Cómo está el cliente hoy, en una frase.
+ *
+ * La regla del negocio: rojo sólo cuando no entró un peso. Si abonó algo,
+ * aunque sea menos que la cuota, el día cuenta como atendido.
+ */
+function estadoDelCliente(c: ClienteHoy): { texto: string; color: string; fondo: string } {
+  if (c.pagadoHoy) {
+    return { texto: `Pagó hoy ${formatCOP(c.montoCobradoHoy)}`, color: '#10b981', fondo: 'rgb(16 185 129 / 0.15)' };
+  }
+  if (c.diasSinPagar >= 2) {
+    return { texto: `${c.diasSinPagar} días sin pagar`, color: '#ef4444', fondo: 'rgb(239 68 68 / 0.15)' };
+  }
+  if (c.atraso > 0) {
+    return { texto: `Atrasado ${formatCOP(c.atraso)}`, color: '#d97706', fondo: 'rgb(245 158 11 / 0.15)' };
+  }
+  if (c.adelanto > 0) {
+    return { texto: `Adelantado ${formatCOP(c.adelanto)}`, color: '#10b981', fondo: 'rgb(16 185 129 / 0.12)' };
+  }
+  return { texto: 'Al día', color: 'var(--brand-500)', fondo: 'rgb(99 102 241 / 0.12)' };
+}
+
+/**
+ * Lista de cobros agrupada y plegable. En el teléfono la ruta completa no cabe
+ * en pantalla, así que se muestran unos pocos y el resto se despliega.
+ */
+function GrupoCobros({
+  titulo, color, clientes, visiblesAlInicio, seVeDeEntrada = false,
+}: {
+  titulo: string;
+  color: string;
+  clientes: ClienteHoy[];
+  /** Cuántos se ven antes de tener que tocar "Ver más". */
+  visiblesAlInicio: number;
+  /** Si el grupo arranca abierto. Los ya cobrados arrancan plegados. */
+  seVeDeEntrada?: boolean;
+}) {
+  // Dos cosas distintas: si el grupo se ve, y si se ve completo
+  const [plegado, setPlegado] = useState(!seVeDeEntrada);
+  const [verTodos, setVerTodos] = useState(false);
+  if (clientes.length === 0) return null;
+
+  const visibles = plegado ? [] : (verTodos ? clientes : clientes.slice(0, visiblesAlInicio));
+  const ocultos = clientes.length - visibles.length;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <button
+        type="button"
+        onClick={() => setPlegado((v) => !v)}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          background: 'transparent', border: 'none', padding: '6px 0',
+          cursor: 'pointer', width: '100%',
+        }}
+      >
+        <span style={{
+          fontSize: 11, fontWeight: 700, color, textTransform: 'uppercase', letterSpacing: '0.05em',
+        }}>
+          {titulo}
+        </span>
+        <ChevronDown
+          size={16}
+          color="var(--text-muted)"
+          style={{ transform: plegado ? 'none' : 'rotate(180deg)', transition: 'transform 150ms' }}
+        />
+      </button>
+
+      {visibles.map((c) => (
+        <TarjetaClienteHoy key={c.prestamoId} cliente={c} />
+      ))}
+
+      {!plegado && ocultos > 0 && (
+        <button
+          type="button"
+          onClick={() => setVerTodos(true)}
+          style={{
+            background: 'var(--bg-input)', border: 'none',
+            borderRadius: 'var(--radius-md)', padding: '12px',
+            color: 'var(--brand-text)', fontWeight: 700, fontSize: 13,
+            cursor: 'pointer', width: '100%',
+          }}
+        >
+          Ver {ocultos} más
+        </button>
+      )}
+
+      {!plegado && verTodos && clientes.length > visiblesAlInicio && (
+        <button
+          type="button"
+          onClick={() => setVerTodos(false)}
+          style={{
+            background: 'transparent', border: 'none', padding: '4px',
+            color: 'var(--text-muted)', fontWeight: 600, fontSize: 12.5,
+            cursor: 'pointer', width: '100%',
+          }}
+        >
+          Mostrar menos
+        </button>
+      )}
+    </div>
+  );
+}
+
 function TarjetaClienteHoy({ cliente }: { cliente: ClienteHoy }) {
-  const esMoroso = cliente.cuotasVencidas > 0;
+  const estado = estadoDelCliente(cliente);
+  const esMoroso = !cliente.pagadoHoy && cliente.diasSinPagar >= 2;
   return (
     <Link href={`/prestamos/${cliente.prestamoId}`} style={{ textDecoration: 'none', display: 'block' }}>
       <div
@@ -114,11 +224,11 @@ function TarjetaClienteHoy({ cliente }: { cliente: ClienteHoy }) {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3 }}>
               <span style={{
-                fontSize: 11, fontWeight: 600, padding: '1px 7px', borderRadius: 12,
-                background: esMoroso ? 'rgb(239 68 68 / 0.15)' : 'rgb(99 102 241 / 0.12)',
-                color: esMoroso ? '#ef4444' : 'var(--brand-500)',
+                fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 12,
+                background: estado.fondo,
+                color: estado.color,
               }}>
-                {esMoroso ? `⚠ ${cliente.cuotasVencidas} cuota${cliente.cuotasVencidas !== 1 ? 's' : ''} vencida${cliente.cuotasVencidas !== 1 ? 's' : ''}` : cliente.modalidad}
+                {estado.texto}
               </span>
               {cliente.clienteCelular && (
                 <a
@@ -329,31 +439,21 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {/* Pendientes primero */}
-            {pendientes.length > 0 && (
-              <>
-                {pendientes.length > 0 && pagados.length > 0 && (
-                  <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Pendientes ({pendientes.length})
-                  </p>
-                )}
-                {pendientes.map((c) => (
-                  <TarjetaClienteHoy key={c.prestamoId} cliente={c} />
-                ))}
-              </>
-            )}
-
-            {/* Ya pagados */}
-            {pagados.length > 0 && (
-              <>
-                <p style={{ margin: '4px 0 0', fontSize: 11, fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  ✓ Cobrados hoy ({pagados.length})
-                </p>
-                {pagados.map((c) => (
-                  <TarjetaClienteHoy key={c.prestamoId} cliente={c} />
-                ))}
-              </>
-            )}
+            {/* En el teléfono la lista completa es larguísima, así que sólo se
+                muestran los primeros y el resto va detrás de un desplegable. */}
+            <GrupoCobros
+              titulo={`Por cobrar (${pendientes.length})`}
+              color="var(--text-muted)"
+              clientes={pendientes}
+              seVeDeEntrada
+              visiblesAlInicio={6}
+            />
+            <GrupoCobros
+              titulo={`✓ Cobrados hoy (${pagados.length})`}
+              color="#10b981"
+              clientes={pagados}
+              visiblesAlInicio={6}
+            />
           </div>
         )}
       </div>

@@ -65,45 +65,41 @@ export class CobrosService {
 
     // Determinar qué cuotas aplica este cobro
     const cuotasAplicadas: number[] = [];
+    const aplicaciones: Array<{ numero: number; monto: number }> = [];
     let montoRestante = dto.monto;
 
-    if (dto.cuotasSeleccionadas && dto.cuotasSeleccionadas.length > 0) {
-      // Modo manual: aplicar solo a las cuotas seleccionadas (para pagos históricos)
-      const numerosSeleccionados = new Set(dto.cuotasSeleccionadas);
-      for (const cuota of prestamo.cuotas) {
-        if (montoRestante <= 0) break;
-        if (!numerosSeleccionados.has(cuota.numero)) continue;
-        if (cuota.estado === 'pagada') continue;
+    // Modo manual: sólo las cuotas que el cobrador marcó (para pagos históricos).
+    // Modo automático: de la más antigua sin saldar hacia adelante.
+    const numerosSeleccionados = dto.cuotasSeleccionadas?.length
+      ? new Set(dto.cuotasSeleccionadas)
+      : null;
 
-        cuotasAplicadas.push(cuota.numero);
-        if (montoRestante >= cuota.monto) {
-          cuota.estado = 'pagada';
-          cuota.fechaPago = ahora;
-          cuota.montoPagado = cuota.monto;
-          montoRestante -= cuota.monto;
-        } else {
-          cuota.estado = 'parcial';
-          cuota.montoPagado = montoRestante;
-          montoRestante = 0;
-        }
+    for (const cuota of prestamo.cuotas) {
+      if (montoRestante <= 0) break;
+      if (numerosSeleccionados && !numerosSeleccionados.has(cuota.numero)) continue;
+      if (cuota.estado === 'pagada') continue;
+
+      // Acumular sobre lo que ya se había abonado a esta cuota: si el cliente
+      // paga de a poquitos, los abonos se suman hasta cerrarla. Antes se
+      // sobrescribía y la cuota nunca llegaba a saldarse.
+      const yaAbonado = cuota.montoPagado ?? 0;
+      const faltante = Math.max(0, cuota.monto - yaAbonado);
+      if (faltante === 0) {
+        cuota.estado = 'pagada';
+        continue;
       }
-    } else {
-      // Modo automático: aplicar secuencialmente desde la cuota más antigua pendiente
-      for (const cuota of prestamo.cuotas) {
-        if (montoRestante <= 0) break;
-        if (cuota.estado === 'pagada') continue;
 
-        cuotasAplicadas.push(cuota.numero);
-        if (montoRestante >= cuota.monto) {
-          cuota.estado = 'pagada';
-          cuota.fechaPago = ahora;
-          cuota.montoPagado = cuota.monto;
-          montoRestante -= cuota.monto;
-        } else {
-          cuota.estado = 'parcial';
-          cuota.montoPagado = montoRestante;
-          montoRestante = 0;
-        }
+      const aplicado = Math.min(montoRestante, faltante);
+      cuota.montoPagado = yaAbonado + aplicado;
+      montoRestante -= aplicado;
+      cuotasAplicadas.push(cuota.numero);
+      aplicaciones.push({ numero: cuota.numero, monto: aplicado });
+
+      if (cuota.montoPagado >= cuota.monto) {
+        cuota.estado = 'pagada';
+        cuota.fechaPago = ahora;
+      } else {
+        cuota.estado = 'parcial';
       }
     }
 
@@ -132,6 +128,7 @@ export class CobrosService {
       geolocalizacion: dto.geolocalizacion,
       observaciones: dto.observaciones,
       cuotasAplicadas,
+      aplicaciones,
       saldoAntes,
       saldoDespues,
     });
@@ -151,8 +148,44 @@ export class CobrosService {
     return cobro;
   }
 
+  /**
+   * Deshace en las cuotas lo que este cobro había abonado.
+   *
+   * Si el cobro guardó cuánto puso en cada cuota (`aplicaciones`) se resta ese
+   * monto exacto, de modo que los abonos de otros cobros sobre la misma cuota
+   * sobreviven. Los cobros viejos, de antes de que se guardara ese detalle,
+   * caen al comportamiento anterior: dejar la cuota en cero.
+   */
+  private revertirCuotas(
+    prestamo: { cuotas: Array<{ numero: number; monto: number; estado: string; fechaPago?: Date; montoPagado?: number }> },
+    cobro: ICobro
+  ): void {
+    const detalle = cobro.aplicaciones?.length ? cobro.aplicaciones : null;
+
+    if (detalle) {
+      for (const { numero, monto } of detalle) {
+        const cuota = prestamo.cuotas.find((c) => c.numero === numero);
+        if (!cuota) continue;
+
+        const restante = Math.max(0, (cuota.montoPagado ?? 0) - monto);
+        cuota.montoPagado = restante > 0 ? restante : undefined;
+        cuota.estado = restante > 0 ? 'parcial' : 'pendiente';
+        if (restante < cuota.monto) cuota.fechaPago = undefined;
+      }
+      return;
+    }
+
+    for (const numero of cobro.cuotasAplicadas) {
+      const cuota = prestamo.cuotas.find((c) => c.numero === numero);
+      if (!cuota) continue;
+      cuota.estado = 'pendiente';
+      cuota.fechaPago = undefined;
+      cuota.montoPagado = undefined;
+    }
+  }
+
   async anular(id: string, dto: AnularCobroDto, usuarioId: string, rol: string): Promise<ICobro> {
-    if (rol !== 'admin') throw new ForbiddenError('Solo el administrador puede anular cobros');
+    if (rol !== 'admin' && rol !== 'auditor') throw new ForbiddenError('Solo el administrador puede anular cobros');
 
     const cobro = await CobroModel.findById(id);
     if (!cobro) throw new NotFoundError('Cobro');
@@ -171,15 +204,7 @@ export class CobrosService {
         await clientesRepository.incrementarPrestamosActivos(prestamo.cliente.toString(), 1);
       }
 
-      // Revertir cuotas
-      for (const numCuota of cobro.cuotasAplicadas) {
-        const cuota = prestamo.cuotas.find((c) => c.numero === numCuota);
-        if (cuota) {
-          cuota.estado = 'pendiente';
-          cuota.fechaPago = undefined;
-          cuota.montoPagado = undefined;
-        }
-      }
+      this.revertirCuotas(prestamo, cobro);
 
       await prestamo.save();
     }
@@ -228,7 +253,7 @@ export class CobrosService {
     return result ?? { totalMonto: 0, cantidad: 0, porTipo: [] };
   }
   async eliminar(id: string, rol: string): Promise<void> {
-    if (rol !== 'admin') throw new ForbiddenError('Solo el administrador puede eliminar cobros');
+    if (rol !== 'auditor') throw new ForbiddenError('Solo el auditor puede eliminar cobros');
 
     const cobro = await CobroModel.findById(id);
     if (!cobro) throw new NotFoundError('Cobro');
@@ -245,15 +270,7 @@ export class CobrosService {
         await clientesRepository.incrementarPrestamosActivos(prestamo.cliente.toString(), 1);
       }
 
-      // Revertir estado de cuotas aplicadas
-      for (const numCuota of cobro.cuotasAplicadas) {
-        const cuota = prestamo.cuotas.find((c) => c.numero === numCuota);
-        if (cuota) {
-          cuota.estado = 'pendiente';
-          cuota.fechaPago = undefined;
-          cuota.montoPagado = undefined;
-        }
-      }
+      this.revertirCuotas(prestamo, cobro);
 
       await prestamo.save();
     }

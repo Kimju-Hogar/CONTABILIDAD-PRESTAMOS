@@ -6,6 +6,8 @@ import { ClienteModel } from '../../models/Cliente.model';
 import { CajaDiaModel } from '../../models/CajaDia.model';
 import { MovimientoCajaModel } from '../../models/MovimientoCaja.model';
 import { UsuarioModel } from '../../models/Usuario.model';
+import { obtenerConfiguracion } from '../../models/Configuracion.model';
+import { cajaService } from '../caja/caja.service';
 import {
   TZ, Periodo, Rango, rangoPeriodo, etiquetaPeriodo, keyDia, rangoDia,
 } from '../../shared/utils/fechas';
@@ -228,8 +230,14 @@ export class AdminService {
    * ya se retiró y lo que sigue disponible en caja.
    */
   async cuentaPapeleria(cobradorId?: string) {
+    const config = await obtenerConfiguracion();
+    const corte = config.fechaCortePapeleria;
+
     const match: Record<string, unknown> = { deletedAt: null, estado: { $ne: 'cancelado' } };
     if (cobradorId) match.cobrador = oid(cobradorId);
+    // Si hay corte de periodo, la cuenta sólo mira los préstamos de ahí en
+    // adelante; lo anterior queda archivado pero consultable.
+    if (corte) match.fechaInicio = { $gte: corte };
 
     const [totales, retiros] = await Promise.all([
       PrestamoModel.aggregate([
@@ -283,6 +291,77 @@ export class AdminService {
       // Retiros de efectivo registrados contra esta cuenta en el libro de caja
       retirosEnCaja: { total: retiros[0]?.total ?? 0, cantidad: retiros[0]?.cantidad ?? 0 },
       prestamosConsiderados: t?.prestamos ?? 0,
+      fechaCorte: corte,
+    };
+  }
+
+  /**
+   * Patrimonio del negocio: la plata que está afuera más la que hay en caja.
+   *
+   * "En la calle" es el saldo por cobrar, o sea capital pendiente más el
+   * interés que falta por ganar — que es como el dueño cuenta su plata.
+   * Prestar mueve efectivo de la caja a la calle; cobrar lo devuelve.
+   */
+  async patrimonio(cobradorId?: string) {
+    const matchCartera: Record<string, unknown> = { estado: 'activo', deletedAt: null };
+    if (cobradorId) matchCartera.cobrador = oid(cobradorId);
+
+    const [cartera, cajas] = await Promise.all([
+      PrestamoModel.aggregate([
+        { $match: matchCartera },
+        {
+          $group: {
+            _id: null,
+            porCobrar: { $sum: '$saldoPendiente' },
+            capitalPendiente: {
+              $sum: {
+                $max: [0, { $subtract: ['$capital', '$totalCobrado'] }],
+              },
+            },
+            prestamos: { $sum: 1 },
+          },
+        },
+      ]),
+      // Efectivo: el último cierre de cada cobrador, más lo que lleve el día abierto
+      CajaDiaModel.aggregate([
+        { $sort: { fechaKey: -1 } },
+        {
+          $group: {
+            _id: '$cobrador',
+            estado: { $first: '$estado' },
+            fechaKey: { $first: '$fechaKey' },
+            baseInicial: { $first: '$baseInicial' },
+            saldoContado: { $first: '$saldoContado' },
+            saldoEsperado: { $first: '$saldoEsperado' },
+          },
+        },
+      ]),
+    ]);
+
+    const c = cartera[0];
+    const porCobrar = c?.porCobrar ?? 0;
+    const capitalPendiente = c?.capitalPendiente ?? 0;
+
+    let efectivo = 0;
+    for (const caja of cajas) {
+      if (caja.estado === 'cerrado') {
+        efectivo += caja.saldoContado ?? caja.saldoEsperado ?? 0;
+      } else {
+        const t = await cajaService.calcularTotalesDia(caja.fechaKey, String(caja._id));
+        efectivo +=
+          (caja.baseInicial ?? 0) + t.totalCobrado + t.otrosIngresos
+          - t.totalPrestado - t.totalGastos - t.otrosEgresos;
+      }
+    }
+
+    return {
+      enLaCalle: porCobrar,
+      capitalPendiente,
+      interesPorGanar: porCobrar - capitalPendiente,
+      prestamosActivos: c?.prestamos ?? 0,
+      efectivoEnCaja: efectivo,
+      total: porCobrar + efectivo,
+      cajasConsideradas: cajas.length,
     };
   }
 
@@ -291,13 +370,14 @@ export class AdminService {
   async resumen(periodo: Periodo, desde?: string, hasta?: string, cobradorId?: string) {
     const rango = rangoPeriodo(periodo, desde, hasta);
 
-    const [recaudo, colocacion, egresos, cart, papeleria, caja] = await Promise.all([
+    const [recaudo, colocacion, egresos, cart, papeleria, caja, patrimonio] = await Promise.all([
       this.recaudoPeriodo(rango, cobradorId),
       this.colocacionPeriodo(rango, cobradorId),
       this.egresosPeriodo(rango, cobradorId),
       this.cartera(cobradorId),
       this.cuentaPapeleria(cobradorId),
       this.resumenCaja(rango, cobradorId),
+      this.patrimonio(cobradorId),
     ]);
 
     // La papelería es lo que se lleva el cobrador, así que no entra en la
@@ -363,6 +443,7 @@ export class AdminService {
       cartera: cart,
       cuentaPapeleria: papeleria,
       caja,
+      patrimonio,
     };
   }
 

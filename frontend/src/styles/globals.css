@@ -123,6 +123,8 @@ body {
   min-height: 100dvh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  /* Evita que el gesto de scroll arrastre la página de atrás en la PWA */
+  overscroll-behavior-y: contain;
 }
 
 /* ─── CARDS ──────────────────────────────────────────────── */
@@ -262,6 +264,19 @@ body {
   width: 100%;
 }
 
+.btn-secondary:active,
+.btn-danger:active,
+.btn-icon:active {
+  transform: scale(0.97);
+  opacity: 0.85;
+}
+
+.btn-danger:disabled,
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .btn-danger {
   background: var(--danger-500);
   color: white;
@@ -279,8 +294,10 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  /* 44px es el mínimo táctil cómodo en teléfono */
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
   border-radius: var(--radius-md);
   border: none;
   background: var(--bg-input);

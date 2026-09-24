@@ -4,10 +4,13 @@ import { env } from '../../config/env';
 import { UnauthorizedError, ForbiddenError } from './error.middleware';
 import { UsuarioModel } from '../../models/Usuario.model';
 
+export const ROLES = ['auditor', 'admin', 'cobrador'] as const;
+export type Rol = typeof ROLES[number];
+
 export interface JwtPayload {
   sub: string;       // userId
   email: string;
-  rol: 'admin' | 'cobrador';
+  rol: Rol;
   sessionId: string;
   iat: number;
   exp: number;
@@ -70,11 +73,14 @@ export async function authMiddleware(
 }
 
 // ─── Middleware de autorización por rol ──────────────────────
-export function requireRole(...roles: Array<'admin' | 'cobrador'>) {
+export function requireRole(...roles: Rol[]) {
   return (req: Request, _res: Response, next: NextFunction): void => {
     if (!req.user) {
       return next(new UnauthorizedError());
     }
+
+    // El auditor está por encima de todo: pasa cualquier control de rol
+    if (req.user.rol === 'auditor') return next();
 
     if (!roles.includes(req.user.rol)) {
       return next(new ForbiddenError('No tienes permisos para esta acción'));
@@ -84,5 +90,14 @@ export function requireRole(...roles: Array<'admin' | 'cobrador'>) {
   };
 }
 
-// ─── Solo Admin ───────────────────────────────────────────────
+// ─── Solo Admin (el auditor también pasa) ────────────────────
 export const adminOnly = requireRole('admin');
+
+// ─── Solo Auditor — para lo que destruye datos ───────────────
+export function auditorOnly(req: Request, _res: Response, next: NextFunction): void {
+  if (!req.user) return next(new UnauthorizedError());
+  if (req.user.rol !== 'auditor') {
+    return next(new ForbiddenError('Solo el auditor puede eliminar registros'));
+  }
+  next();
+}

@@ -1,11 +1,12 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Save, CheckCircle2, AlertTriangle, Settings } from 'lucide-react';
+import { Loader2, Save, CheckCircle2, AlertTriangle, Settings, RotateCcw } from 'lucide-react';
 import { apiClient } from '@/services/api';
-import { formatCOP } from '@/lib/utils';
+import { formatCOP, formatFechaCO } from '@/lib/utils';
 
 interface Config {
+  fechaCortePapeleria?: string | null;
   interesPorDefecto: number;
   papeleriaPorCienMil: number;
   papeleriaMinima: number;
@@ -13,8 +14,11 @@ interface Config {
   baseCajaSugerida: number;
 }
 
+/** Sólo los campos numéricos editables; la fecha de corte va aparte. */
+type ConfigNumerica = Omit<Config, 'fechaCortePapeleria'>;
+
 const CAMPOS: Array<{
-  clave: keyof Config;
+  clave: keyof ConfigNumerica;
   label: string;
   ayuda: string;
   sufijo?: string;
@@ -54,7 +58,7 @@ const CAMPOS: Array<{
 
 export default function ConfiguracionPage() {
   const queryClient = useQueryClient();
-  const [valores, setValores] = useState<Config | null>(null);
+  const [valores, setValores] = useState<ConfigNumerica | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [guardado, setGuardado] = useState(false);
 
@@ -74,6 +78,22 @@ export default function ConfiguracionPage() {
       });
     }
   }, [data, valores]);
+
+  const corte = useMutation({
+    mutationFn: () => apiClient.post('/api/admin/papeleria/corte', {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-configuracion'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-resumen'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-reporte'] });
+      setError(null);
+      setGuardado(true);
+      setTimeout(() => setGuardado(false), 3000);
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setError(msg ?? 'No se pudo reiniciar la cuenta');
+    },
+  });
 
   const guardar = useMutation({
     mutationFn: () => apiClient.put('/api/admin/configuracion', valores),
@@ -160,6 +180,40 @@ export default function ConfiguracionPage() {
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
         >
           <Save size={16} /> {guardar.isPending ? 'Guardando…' : 'Guardar cambios'}
+        </button>
+      </div>
+
+      {/* ─── Reinicio de la cuenta de papelería ──────────────── */}
+      <div className="card" style={{ padding: '14px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
+          <RotateCcw size={16} color="var(--brand-500)" />
+          <h2 style={{ margin: 0, fontSize: 14, fontWeight: 800 }}>Cuenta de papelería</h2>
+        </div>
+
+        {data?.fechaCortePapeleria ? (
+          <p style={{ margin: '0 0 12px', fontSize: 12.5, color: 'var(--text-secondary)' }}>
+            Contando desde el <strong>{formatFechaCO(data.fechaCortePapeleria)}</strong>.
+            Lo anterior a esa fecha quedó archivado y no suma en la cuenta.
+          </p>
+        ) : (
+          <p style={{ margin: '0 0 12px', fontSize: 12.5, color: 'var(--text-secondary)' }}>
+            Hoy la cuenta suma toda la papelería desde el inicio del negocio. Puedes arrancar
+            un periodo nuevo: no se borra nada, sólo se deja de contar lo viejo.
+          </p>
+        )}
+
+        <button
+          className="btn-secondary"
+          disabled={corte.isPending}
+          onClick={() => {
+            if (window.confirm('¿Arrancar un periodo nuevo de papelería desde hoy? Lo anterior queda archivado, no se borra.')) {
+              corte.mutate();
+            }
+          }}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+        >
+          <RotateCcw size={15} />
+          {corte.isPending ? 'Reiniciando…' : 'Reiniciar la cuenta desde hoy'}
         </button>
       </div>
     </div>

@@ -7,7 +7,7 @@ import {
 } from 'recharts';
 import {
   Loader2, TrendingUp, HandCoins, PiggyBank, Percent, Users, FileText,
-  Wallet, AlertTriangle, ArrowRight, Settings, UserCog, Briefcase,
+  Wallet, AlertTriangle, ArrowRight, Settings, UserCog, Briefcase, ShieldCheck, Calculator,
 } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { formatCOP } from '@/lib/utils';
@@ -63,6 +63,10 @@ interface Resumen {
       fechaKey: string; estado: string; saldoContado: number | null;
       saldoEsperado: number; diferencia: number; cobrador?: { nombre: string };
     } | null;
+  };
+  patrimonio: {
+    enLaCalle: number; capitalPendiente: number; interesPorGanar: number;
+    prestamosActivos: number; efectivoEnCaja: number; total: number;
   };
 }
 
@@ -149,6 +153,46 @@ export default function AdminPage() {
       </div>
 
       <Segmented value={periodo} onChange={setPeriodo} options={PERIODOS} />
+
+      {/* ─── Patrimonio: toda la plata del negocio ──────────── */}
+      <div className="card" style={{
+        background: 'linear-gradient(135deg, #1e293b, #334155)',
+        color: 'white', padding: '16px 18px', border: 'none',
+      }}>
+        <p style={{
+          margin: 0, fontSize: 10.5, fontWeight: 700, opacity: 0.75,
+          textTransform: 'uppercase', letterSpacing: '0.06em',
+        }}>
+          Tu plata en total
+        </p>
+        <p style={{ margin: '6px 0 2px', fontSize: 27, fontWeight: 800, lineHeight: 1.1 }}>
+          {formatCOP(resumen.patrimonio.total)}
+        </p>
+        <div style={{
+          display: 'flex', gap: 10, marginTop: 12,
+          borderTop: '1px solid rgb(255 255 255 / 0.15)', paddingTop: 12,
+        }}>
+          <div style={{ flex: 1 }}>
+            <p style={{ margin: 0, fontSize: 10.5, opacity: 0.7 }}>EN LA CALLE</p>
+            <p style={{ margin: '2px 0 0', fontSize: 16, fontWeight: 800 }}>
+              {formatCOP(resumen.patrimonio.enLaCalle)}
+            </p>
+            <p style={{ margin: 0, fontSize: 10.5, opacity: 0.6 }}>
+              {formatCOP(resumen.patrimonio.capitalPendiente)} capital + {formatCOP(resumen.patrimonio.interesPorGanar)} interés
+            </p>
+          </div>
+          <div style={{ width: 1, background: 'rgb(255 255 255 / 0.15)' }} />
+          <div style={{ flex: 1 }}>
+            <p style={{ margin: 0, fontSize: 10.5, opacity: 0.7 }}>EN CAJA</p>
+            <p style={{ margin: '2px 0 0', fontSize: 16, fontWeight: 800 }}>
+              {formatCOP(resumen.patrimonio.efectivoEnCaja)}
+            </p>
+            <p style={{ margin: 0, fontSize: 10.5, opacity: 0.6 }}>
+              efectivo disponible para prestar
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* ─── Indicadores principales ────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -407,8 +451,11 @@ export default function AdminPage() {
         {[
           { href: '/admin/reporte', icon: FileText, label: 'Reporte PDF' },
           { href: '/admin/usuarios', icon: UserCog, label: 'Usuarios' },
+          { href: '/admin/auditoria', icon: ShieldCheck, label: 'Auditoría' },
           { href: '/admin/configuracion', icon: Settings, label: 'Parámetros' },
           { href: '/clientes', icon: Users, label: 'Clientes' },
+          { href: '/caja/dia', icon: Calculator, label: 'Cierre diario' },
+          { href: '/caja/historial', icon: Wallet, label: 'Cierres' },
         ].map(({ href, icon: Icon, label }) => (
           <Link key={href} href={href} style={{ textDecoration: 'none' }}>
             <div className="card" style={{ padding: 14, textAlign: 'center' }}>

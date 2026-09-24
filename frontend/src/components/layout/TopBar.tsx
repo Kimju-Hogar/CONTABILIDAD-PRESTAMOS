@@ -14,10 +14,12 @@ const TITLES: Record<string, string> = {
   '/reportes':     'Reportes',
   '/caja':         'Caja del día',
   '/caja/historial': 'Cierres de caja',
+  '/caja/dia': 'Reporte del día',
   '/admin':        'Panel admin',
   '/admin/usuarios': 'Usuarios',
   '/admin/configuracion': 'Parámetros',
   '/admin/reporte': 'Reporte general',
+  '/admin/auditoria': 'Auditoría',
 };
 
 export function TopBar() {

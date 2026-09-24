@@ -18,7 +18,10 @@
     "seed:admin:reset": "tsx scripts/seed-admin.ts --reset",
     "migrate:cuotas": "tsx scripts/migrate-cuotas-diarias.ts",
     "roles:separar": "tsx scripts/separar-roles.ts",
-    "condonar": "tsx scripts/condonar-saldos-viejos.ts"
+    "condonar": "tsx scripts/condonar-saldos-viejos.ts",
+    "restaurar:cobros": "tsx scripts/restaurar-cobros.ts",
+    "crear:auditor": "tsx scripts/crear-auditor.ts",
+    "rotar:mongo": "tsx scripts/rotar-mongo.ts"
   },
   "dependencies": {
     "@types/bcryptjs": "^2.4.6",

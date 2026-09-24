@@ -2,11 +2,12 @@ import { Router, Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { adminService } from './admin.service';
-import { authMiddleware, adminOnly } from '../../shared/middleware/auth.middleware';
+import { authMiddleware, adminOnly, auditorOnly } from '../../shared/middleware/auth.middleware';
 import { auditMiddleware } from '../../shared/middleware/audit.middleware';
-import { ResponseHelper } from '../../shared/utils/responses';
+import { ResponseHelper, buildPagination } from '../../shared/utils/responses';
 import { AppError, NotFoundError } from '../../shared/middleware/error.middleware';
 import { UsuarioModel } from '../../models/Usuario.model';
+import { AuditLogModel } from '../../models/AuditLog.model';
 import { ConfiguracionModel, obtenerConfiguracion } from '../../models/Configuracion.model';
 import { env } from '../../config/env';
 import type { Periodo } from '../../shared/utils/fechas';
@@ -115,6 +116,46 @@ router.get('/reporte.pdf', async (req: Request, res: Response, next: NextFunctio
   } catch (error) { next(error); }
 });
 
+// ─── Bitácora de auditoría ────────────────────────────────────
+router.get('/auditoria', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const page = Math.max(1, Number(req.query['page']) || 1);
+    const limit = Math.min(100, Math.max(1, Number(req.query['limit']) || 40));
+    const query: Record<string, unknown> = {};
+    if (req.query['accion']) query.accion = req.query['accion'];
+    if (req.query['recurso']) query.recurso = req.query['recurso'];
+    if (req.query['usuarioId']) query.usuario = req.query['usuarioId'];
+
+    const [data, total] = await Promise.all([
+      AuditLogModel.find(query)
+        .populate('usuario', 'nombre email rol')
+        .sort({ timestamp: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      AuditLogModel.countDocuments(query),
+    ]);
+
+    ResponseHelper.paginated(res, data, buildPagination(total, page, limit));
+  } catch (error) { next(error); }
+});
+
+/** Las acciones distintas que hay registradas, para llenar el filtro. */
+router.get('/auditoria/acciones', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const acciones = await AuditLogModel.distinct('accion');
+    ResponseHelper.success(res, acciones.sort());
+  } catch (error) { next(error); }
+});
+
+// ─── Patrimonio: lo que hay en la calle más lo que hay en caja ─
+router.get('/patrimonio', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const cobradorId = req.query['cobradorId'] as string | undefined;
+    ResponseHelper.success(res, await adminService.patrimonio(cobradorId));
+  } catch (error) { next(error); }
+});
+
 // ─── Cuenta general de papelería y cartones ───────────────────
 router.get('/cuenta-papeleria', async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -122,6 +163,47 @@ router.get('/cuenta-papeleria', async (req: Request, res: Response, next: NextFu
     ResponseHelper.success(res, await adminService.cuentaPapeleria(cobradorId));
   } catch (error) { next(error); }
 });
+
+/**
+ * Arranca un periodo nuevo de papelería. No borra nada: guarda la fecha de
+ * corte y la cuenta pasa a contar sólo lo que venga de ahí en adelante.
+ */
+router.post(
+  '/papeleria/corte',
+  auditMiddleware({ accion: 'CORTE_PAPELERIA', recurso: 'Configuracion' }),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const fecha = req.body?.fecha ? new Date(String(req.body.fecha)) : new Date();
+      if (Number.isNaN(fecha.getTime())) throw new AppError('Fecha de corte inválida', 400);
+
+      await obtenerConfiguracion();
+      const config = await ConfiguracionModel.findOneAndUpdate(
+        { clave: 'global' },
+        { fechaCortePapeleria: fecha, actualizadoPor: req.user!.sub },
+        { new: true }
+      );
+      ResponseHelper.success(res, config, 'Periodo de papelería reiniciado');
+    } catch (error) { next(error); }
+  }
+);
+
+/** Deshace el corte: la cuenta vuelve a mostrar todo el histórico. */
+router.delete(
+  '/papeleria/corte',
+  auditorOnly,
+  auditMiddleware({ accion: 'QUITAR_CORTE_PAPELERIA', recurso: 'Configuracion' }),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      await obtenerConfiguracion();
+      const config = await ConfiguracionModel.findOneAndUpdate(
+        { clave: 'global' },
+        { fechaCortePapeleria: null, actualizadoPor: req.user!.sub },
+        { new: true }
+      );
+      ResponseHelper.success(res, config, 'Corte de papelería eliminado');
+    } catch (error) { next(error); }
+  }
+);
 
 // ─── Configuración del negocio ────────────────────────────────
 const ActualizarConfigDto = z.object({
@@ -160,13 +242,13 @@ const CrearUsuarioDto = z.object({
   nombre: z.string().min(3, 'El nombre debe tener al menos 3 caracteres').max(100),
   email: z.string().email('Email inválido'),
   password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres'),
-  rol: z.enum(['admin', 'cobrador']).default('cobrador'),
+  rol: z.enum(['auditor', 'admin', 'cobrador']).default('cobrador'),
 });
 
 const ActualizarUsuarioDto = z.object({
   nombre: z.string().min(3).max(100).optional(),
   email: z.string().email().optional(),
-  rol: z.enum(['admin', 'cobrador']).optional(),
+  rol: z.enum(['auditor', 'admin', 'cobrador']).optional(),
   activo: z.boolean().optional(),
 });
 
@@ -256,6 +338,7 @@ router.post(
 
 router.delete(
   '/usuarios/:id',
+  auditorOnly,
   auditMiddleware({ accion: 'DELETE_USUARIO', recurso: 'Usuario', getRecursoId: (r) => r.params['id'] }),
   async (req: Request, res: Response, next: NextFunction) => {
     try {

@@ -261,6 +261,37 @@ export class DashboardService {
         },
       },
       {
+        // Último pago del préstamo, sin importar la fecha, para saber hace
+        // cuántos días que el cliente no aparece
+        $lookup: {
+          from: 'cobros',
+          let: { prestamoId: '$_id' },
+          pipeline: [
+            { $match: { $expr: { $eq: ['$prestamo', '$$prestamoId'] }, anulado: false } },
+            { $sort: { fecha: -1 } },
+            { $limit: 1 },
+            { $project: { fecha: 1, monto: 1 } },
+          ],
+          as: 'ultimoCobro',
+        },
+      },
+      {
+        $addFields: {
+          // Lo que el cliente ya debería haber pagado si hubiera seguido el plan
+          esperadoALaFecha: {
+            $sum: {
+              $map: {
+                input: {
+                  $filter: { input: '$cuotas', cond: { $lte: ['$$this.fechaEsperada', fin] } },
+                },
+                in: '$$this.monto',
+              },
+            },
+          },
+          ultimoPago: { $arrayElemAt: ['$ultimoCobro', 0] },
+        },
+      },
+      {
         $project: {
           prestamoId: '$_id',
           clienteId: '$clienteInfo._id',
@@ -269,24 +300,37 @@ export class DashboardService {
           modalidad: 1,
           cuotaDiaria: 1,
           saldoPendiente: 1,
+          totalCobrado: 1,
+          // Cuotas que pasaron de fecha sin recibir un solo peso
           cuotasVencidas: {
             $size: {
-              $filter: {
-                input: '$cuotas',
-                cond: { $eq: ['$$this.estado', 'vencida'] },
-              },
+              $filter: { input: '$cuotas', cond: { $eq: ['$$this.estado', 'vencida'] } },
             },
           },
-          // Próxima cuota pendiente
+          // Atraso real en plata: lo que debía llevar pagado menos lo que pagó
+          atraso: {
+            $max: [0, { $subtract: ['$esperadoALaFecha', '$totalCobrado'] }],
+          },
+          // Si va adelantado, cuánto
+          adelanto: {
+            $max: [0, { $subtract: ['$totalCobrado', '$esperadoALaFecha'] }],
+          },
           proximaCuota: { $arrayElemAt: ['$cuotasHoy', 0] },
-          // Si ya hay cobro registrado hoy
           pagadoHoy: { $gt: [{ $size: '$cobrosHoy' }, 0] },
           montoCobradoHoy: { $sum: '$cobrosHoy.monto' },
+          ultimoPagoFecha: '$ultimoPago.fecha',
+          diasSinPagar: {
+            $cond: [
+              { $ifNull: ['$ultimoPago.fecha', false] },
+              { $dateDiff: { startDate: '$ultimoPago.fecha', endDate: fin, unit: 'day' } },
+              { $dateDiff: { startDate: '$fechaInicio', endDate: fin, unit: 'day' } },
+            ],
+          },
         },
       },
-      // Ordenar: primero los no pagados, luego por cuotas vencidas descendente
+      // Primero los que faltan por cobrar hoy, y dentro de esos los más atrasados
       {
-        $sort: { pagadoHoy: 1, cuotasVencidas: -1, clienteNombre: 1 },
+        $sort: { pagadoHoy: 1, atraso: -1, clienteNombre: 1 },
       },
     ]);
 

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { CheckCircle2, AlertTriangle, XCircle, Loader2, Phone, X, Trash2, Edit2, ChevronDown, ChevronUp, Info, PackageCheck } from 'lucide-react';
 import { apiClient } from '@/services/api';
+import { useRol } from '@/hooks/useRol';
 import { formatCOP, formatFechaCO, formatFechaHoraCO, porcentajeProgreso } from '@/lib/utils';
 
 const CUOTA_COLORS: Record<string, string> = {
@@ -30,6 +31,7 @@ interface CobroItem {
 }
 
 export default function PrestamoDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { puedeEliminar } = useRol();
   const { id } = use(params);
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -428,6 +430,7 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
                           : <ChevronDown size={15} color="var(--text-muted)" />
                       )}
                       <button
+                        hidden={!puedeEliminar}
                         onClick={(e) => { e.stopPropagation(); setShowDeleteCobroModal(c._id); }}
                         title="Eliminar cobro"
                         style={{
@@ -541,13 +544,15 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
             <XCircle size={18} />
             Cancelar préstamo
           </button>
-          <button
-            className="btn-danger"
-            onClick={() => setShowDeleteModal(true)}
-          >
-            <Trash2 size={18} />
-            Eliminar préstamo
-          </button>
+          {puedeEliminar && (
+            <button
+              className="btn-danger"
+              onClick={() => setShowDeleteModal(true)}
+            >
+              <Trash2 size={18} />
+              Eliminar préstamo
+            </button>
+          )}
         </div>
       )}
 
@@ -659,16 +664,18 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
                   <p style={{ margin: '0 0 10px', fontSize: 12, color: 'var(--text-muted)' }}>
                     Esta cuota fue pagada en el cobro del {formatFechaHoraCO(cobroAsociado.fecha)} ({formatCOP(cobroAsociado.monto)} total).
                   </p>
-                  <button
-                    className="btn-danger"
-                    style={{ width: '100%', fontSize: 13 }}
-                    onClick={() => {
-                      setCuotaDetalle(null);
-                      setShowDeleteCobroModal(cobroAsociado._id);
-                    }}
-                  >
-                    <Trash2 size={15} /> Eliminar este cobro y revertir cuota
-                  </button>
+                  {puedeEliminar && (
+                    <button
+                      className="btn-danger"
+                      style={{ width: '100%', fontSize: 13 }}
+                      onClick={() => {
+                        setCuotaDetalle(null);
+                        setShowDeleteCobroModal(cobroAsociado._id);
+                      }}
+                    >
+                      <Trash2 size={15} /> Eliminar este cobro y revertir cuota
+                    </button>
+                  )}
                 </div>
               );
             })()}

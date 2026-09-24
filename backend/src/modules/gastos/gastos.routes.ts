@@ -2,7 +2,7 @@ import { v2 as cloudinary } from 'cloudinary';
 import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import { GastoModel } from '../../models/Gasto.model';
-import { authMiddleware } from '../../shared/middleware/auth.middleware';
+import { authMiddleware, auditorOnly } from '../../shared/middleware/auth.middleware';
 import { ResponseHelper, buildPagination } from '../../shared/utils/responses';
 import { NotFoundError, ForbiddenError } from '../../shared/middleware/error.middleware';
 import { CrearGastoDto, FiltrosGastoDto } from './gastos.dto';
@@ -70,7 +70,7 @@ router.post('/', upload.array('fotos', 5), async (req: Request, res: Response, n
 });
 
 // ─── Eliminar (solo el que lo creó o admin) ──────────────────
-router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/:id', auditorOnly, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const gasto = await GastoModel.findById(req.params['id']);
     if (!gasto) throw new NotFoundError('Gasto');

@@ -14,7 +14,7 @@ const NAV_COBRADOR = [
   { href: '/caja',      icon: Wallet,      label: 'Caja' },
 ];
 
-// El admin cambia Clientes por el panel: las cifras pesan más que el listado
+// Admin y auditor cambian Clientes por el panel: las cifras pesan más que el listado
 const NAV_ADMIN = [
   { href: '/',          icon: Home,        label: 'Inicio' },
   { href: '/cobros',    icon: DollarSign,  label: 'Cobros' },
@@ -26,7 +26,8 @@ const NAV_ADMIN = [
 export function BottomNav() {
   const pathname = usePathname();
   const { usuario } = useAuthStore();
-  const navItems = usuario?.rol === 'admin' ? NAV_ADMIN : NAV_COBRADOR;
+  const mandaEnTodo = usuario?.rol === 'admin' || usuario?.rol === 'auditor';
+  const navItems = mandaEnTodo ? NAV_ADMIN : NAV_COBRADOR;
 
   return (
     <nav className="bottom-nav" role="navigation" aria-label="Navegación principal">

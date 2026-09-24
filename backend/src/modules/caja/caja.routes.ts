@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { cajaService } from './caja.service';
-import { authMiddleware, adminOnly } from '../../shared/middleware/auth.middleware';
+import { authMiddleware, adminOnly, auditorOnly } from '../../shared/middleware/auth.middleware';
 import { auditMiddleware } from '../../shared/middleware/audit.middleware';
 import { ResponseHelper } from '../../shared/utils/responses';
 import { ForbiddenError, AppError } from '../../shared/middleware/error.middleware';
@@ -19,7 +19,8 @@ router.use(authMiddleware);
 function resolverCobrador(req: Request): string {
   const solicitado = (req.query['cobradorId'] ?? req.body?.cobradorId) as string | undefined;
   if (!solicitado) return req.user!.sub;
-  if (req.user!.rol !== 'admin' && solicitado !== req.user!.sub) {
+  const mandaEnTodo = req.user!.rol === 'admin' || req.user!.rol === 'auditor';
+  if (!mandaEnTodo && solicitado !== req.user!.sub) {
     throw new ForbiddenError('Solo puedes operar tu propia caja');
   }
   return solicitado;
@@ -42,6 +43,24 @@ router.get('/detalle', async (req: Request, res: Response, next: NextFunction) =
     const fechaKey = (req.query['fecha'] as string) ?? keyDia();
     const data = await cajaService.detalleDia(fechaKey, cobradorId);
     ResponseHelper.success(res, data);
+  } catch (error) { next(error); }
+});
+
+// ─── Cierre del día en PDF ────────────────────────────────────
+router.get('/dia.pdf', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const cobradorId = resolverCobrador(req);
+    const fechaKey = (req.query['fecha'] as string) ?? keyDia();
+    const datos = await cajaService.detalleDia(fechaKey, cobradorId);
+
+    // Import dinámico: PDFKit sólo hace falta cuando piden el papel
+    const { construirCierreDiarioPDF } = await import('./caja.reporte');
+    const pdf = await construirCierreDiarioPDF(datos as never);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=cierre_${fechaKey}.pdf`);
+    res.setHeader('Content-Length', pdf.length);
+    res.send(pdf);
   } catch (error) { next(error); }
 });
 
@@ -93,7 +112,8 @@ router.get('/cierres', async (req: Request, res: Response, next: NextFunction) =
   try {
     const filtros = FiltrosCierresDto.parse(req.query);
     // Un cobrador solo ve sus propios cierres
-    if (req.user!.rol !== 'admin') filtros.cobradorId = req.user!.sub;
+    // El cobrador solo ve los suyos; admin y auditor ven los de todos
+    if (req.user!.rol === 'cobrador') filtros.cobradorId = req.user!.sub;
     const { data, pagination } = await cajaService.listarCierres(filtros);
     ResponseHelper.paginated(res, data, pagination);
   } catch (error) { next(error); }
@@ -124,6 +144,7 @@ router.post(
 
 router.delete(
   '/movimientos/:id',
+  auditorOnly,
   auditMiddleware({ accion: 'DELETE_MOVIMIENTO_CAJA', recurso: 'MovimientoCaja', getRecursoId: (r) => r.params['id'] }),
   async (req: Request, res: Response, next: NextFunction) => {
     try {

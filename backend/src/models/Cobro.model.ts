@@ -17,6 +17,8 @@ export interface ICobro extends Document {
   geolocalizacion?: IGeolocalizacion;
   observaciones?: string;
   cuotasAplicadas: number[];
+  /** Cuánto de este cobro se abonó a cada cuota, para poder revertirlo exacto. */
+  aplicaciones: Array<{ numero: number; monto: number }>;
   saldoAntes: number;
   saldoDespues: number;
   anulado: boolean;
@@ -75,6 +77,10 @@ const CobroSchema = new Schema<ICobro>(
     },
     cuotasAplicadas: {
       type: [Number],
+      default: [],
+    },
+    aplicaciones: {
+      type: [new Schema({ numero: Number, monto: Number }, { _id: false })],
       default: [],
     },
     saldoAntes: {

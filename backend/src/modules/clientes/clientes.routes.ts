@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { clientesController } from './clientes.controller';
-import { authMiddleware, adminOnly } from '../../shared/middleware/auth.middleware';
+import { authMiddleware, auditorOnly } from '../../shared/middleware/auth.middleware';
 import { auditMiddleware } from '../../shared/middleware/audit.middleware';
 
 const router = Router();
@@ -38,7 +38,7 @@ router.put(
 
 router.delete(
   '/:id',
-  adminOnly,
+  auditorOnly,
   auditMiddleware({ accion: 'DELETE_CLIENTE', recurso: 'Cliente', getRecursoId: (req) => req.params['id'] }),
   clientesController.eliminar.bind(clientesController)
 );
