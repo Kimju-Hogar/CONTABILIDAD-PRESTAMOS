@@ -17,6 +17,12 @@ export interface TotalesDia {
   cantidadCobros: number;
   totalPrestado: number;
   cantidadPrestamos: number;
+  /**
+   * Efectivo que ENTRÓ por cargos de renovación. Cuando se renueva una tarjeta
+   * sin entregar plata nueva, el cliente paga la papelería y el cartón de su
+   * bolsillo: ahí el desembolso queda negativo y esa plata entra a la caja.
+   */
+  cargosCobrados: number;
   totalPapeleria: number;
   totalCartones: number;
   totalGastos: number;
@@ -55,7 +61,16 @@ export class CajaService {
         {
           $group: {
             _id: null,
-            desembolsado: { $sum: '$montoDesembolsado' },
+            // Solo lo que de verdad salió de la caja
+            desembolsado: {
+              $sum: { $cond: [{ $gt: ['$montoDesembolsado', 0] }, '$montoDesembolsado', 0] },
+            },
+            // Y aparte lo que entró: renovaciones donde el cliente pagó los cargos
+            cargosCobrados: {
+              $sum: {
+                $cond: [{ $lt: ['$montoDesembolsado', 0] }, { $abs: '$montoDesembolsado' }, 0],
+              },
+            },
             papeleria: { $sum: '$papeleria' },
             carton: { $sum: { $ifNull: ['$carton', 0] } },
             cantidad: { $sum: 1 },
@@ -81,6 +96,7 @@ export class CajaService {
       cantidadCobros: cobros[0]?.cantidad ?? 0,
       totalPrestado: p?.desembolsado ?? 0,
       cantidadPrestamos: p?.cantidad ?? 0,
+      cargosCobrados: p?.cargosCobrados ?? 0,
       totalPapeleria: p?.papeleria ?? 0,
       totalCartones: p?.carton ?? 0,
       totalGastos: gastos[0]?.total ?? 0,
@@ -94,6 +110,7 @@ export class CajaService {
     return (
       baseInicial +
       t.totalCobrado +
+      t.cargosCobrados +
       t.otrosIngresos -
       t.totalPrestado -
       t.totalGastos -
@@ -152,6 +169,7 @@ export class CajaService {
           cantidadCobros: totales.cantidadCobros,
           totalPrestado: caja.totalPrestado,
           cantidadPrestamos: totales.cantidadPrestamos,
+          cargosCobrados: caja.cargosCobrados,
           totalPapeleria: caja.totalPapeleria,
           totalCartones: caja.totalCartones,
           totalGastos: caja.totalGastos,
@@ -245,6 +263,7 @@ export class CajaService {
 
     caja.totalCobrado = totales.totalCobrado;
     caja.totalPrestado = totales.totalPrestado;
+    caja.cargosCobrados = totales.cargosCobrados;
     caja.totalPapeleria = totales.totalPapeleria;
     caja.totalCartones = totales.totalCartones;
     caja.totalGastos = totales.totalGastos;
@@ -324,6 +343,7 @@ export class CajaService {
           ...fila,
           totalCobrado: t.totalCobrado,
           totalPrestado: t.totalPrestado,
+          cargosCobrados: t.cargosCobrados,
           totalPapeleria: t.totalPapeleria,
           totalCartones: t.totalCartones,
           totalGastos: t.totalGastos,

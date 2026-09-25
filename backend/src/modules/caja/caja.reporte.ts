@@ -38,7 +38,7 @@ export interface DatosDia {
   caja?: { cobrador?: { nombre?: string }; observaciones?: string } | null;
   totales: {
     totalCobrado: number; cantidadCobros: number;
-    totalPrestado: number; cantidadPrestamos: number;
+    totalPrestado: number; cantidadPrestamos: number; cargosCobrados: number;
     totalPapeleria: number; totalCartones: number;
     totalGastos: number; otrosIngresos: number; otrosEgresos: number;
   };
@@ -153,6 +153,9 @@ export function construirCierreDiarioPDF(d: DatosDia): Promise<Buffer> {
   titulo(doc, 'Cuadre de caja');
   fila(doc, 'Base con la que arrancó', cop(d.baseInicial));
   fila(doc, `Cobros recibidos (${t.cantidadCobros})`, cop(t.totalCobrado), { color: VERDE });
+  if (t.cargosCobrados > 0) {
+    fila(doc, 'Cargos de renovación cobrados', cop(t.cargosCobrados), { color: VERDE });
+  }
   if (t.otrosIngresos > 0) fila(doc, 'Otros ingresos', cop(t.otrosIngresos), { color: VERDE });
   fila(doc, `Préstamos desembolsados (${t.cantidadPrestamos})`, cop(-t.totalPrestado), { color: ROJO });
   fila(doc, 'Gastos del día', cop(-t.totalGastos), { color: ROJO });

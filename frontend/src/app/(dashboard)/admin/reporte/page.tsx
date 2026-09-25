@@ -42,7 +42,7 @@ interface Reporte {
     utilidad: { negocio: number; cobrador: number; total: number; margenSobreRecaudo: number; margenSobreColocado: number };
     cuentaPapeleria: {
       papeleria: { generada: number; retirada: number; disponible: number };
-      cartones: { generados: number; retirados: number; disponibles: number };
+      cartones: { generados: number };
       total: { generado: number; retirado: number; disponible: number };
     };
     cartera: { saldoPendiente: number; montoVencido: number; indiceMora: number; prestamosActivos: number; prestamosEnMora: number };
@@ -197,8 +197,7 @@ export default function ReportePage() {
         </p>
         <StatRow label="Papelería generada" valor={r.cuentaPapeleria.papeleria.generada} />
         <StatRow label="Papelería retirada" valor={-r.cuentaPapeleria.papeleria.retirada} tono="muted" />
-        <StatRow label="Cartones generados" valor={r.cuentaPapeleria.cartones.generados} />
-        <StatRow label="Cartones retirados" valor={-r.cuentaPapeleria.cartones.retirados} tono="muted" />
+        <StatRow label="Cartones cobrados" sub="Ganancia directa, no se retiran" valor={r.cuentaPapeleria.cartones.generados} />
         <Sep />
         <StatRow label="Quedó disponible" valor={r.cuentaPapeleria.total.disponible} negrita tono="positivo" />
       </SectionCard>

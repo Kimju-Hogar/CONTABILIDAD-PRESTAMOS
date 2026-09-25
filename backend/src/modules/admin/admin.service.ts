@@ -250,9 +250,6 @@ export class AdminService {
               $sum: { $cond: ['$papeleriaRetirada', '$papeleria', 0] },
             },
             cartonesGenerados: { $sum: { $ifNull: ['$carton', 0] } },
-            cartonesRetirados: {
-              $sum: { $cond: [{ $ifNull: ['$cartonRetirado', false] }, { $ifNull: ['$carton', 0] }, 0] },
-            },
             prestamos: { $sum: 1 },
           },
         },
@@ -267,10 +264,9 @@ export class AdminService {
     const papeleriaGenerada = t?.papeleriaGenerada ?? 0;
     const cartonesGenerados = t?.cartonesGenerados ?? 0;
     const papeleriaRetirada = t?.papeleriaRetirada ?? 0;
-    const cartonesRetirados = t?.cartonesRetirados ?? 0;
 
+    // El cartón no se retira: es ganancia del negocio desde que se cobra
     const generado = papeleriaGenerada + cartonesGenerados;
-    const marcadoRetirado = papeleriaRetirada + cartonesRetirados;
 
     return {
       papeleria: {
@@ -280,13 +276,11 @@ export class AdminService {
       },
       cartones: {
         generados: cartonesGenerados,
-        retirados: cartonesRetirados,
-        disponibles: cartonesGenerados - cartonesRetirados,
       },
       total: {
         generado,
-        retirado: marcadoRetirado,
-        disponible: generado - marcadoRetirado,
+        retirado: papeleriaRetirada,
+        disponible: generado - papeleriaRetirada,
       },
       // Retiros de efectivo registrados contra esta cuenta en el libro de caja
       retirosEnCaja: { total: retiros[0]?.total ?? 0, cantidad: retiros[0]?.cantidad ?? 0 },

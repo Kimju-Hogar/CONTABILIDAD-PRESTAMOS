@@ -53,7 +53,7 @@ interface Resumen {
   };
   cuentaPapeleria: {
     papeleria: { generada: number; retirada: number; disponible: number };
-    cartones: { generados: number; retirados: number; disponibles: number };
+    cartones: { generados: number };
     total: { generado: number; retirado: number; disponible: number };
   };
   caja: {
@@ -337,8 +337,7 @@ export default function AdminPage() {
       <SectionCard titulo="Cuenta general de papelería y cartones" icon={FileText}>
         <StatRow label="Papelería generada" valor={resumen.cuentaPapeleria.papeleria.generada} />
         <StatRow label="Papelería ya retirada" valor={-resumen.cuentaPapeleria.papeleria.retirada} tono="muted" />
-        <StatRow label="Cartones generados" valor={resumen.cuentaPapeleria.cartones.generados} />
-        <StatRow label="Cartones ya retirados" valor={-resumen.cuentaPapeleria.cartones.retirados} tono="muted" />
+        <StatRow label="Cartones cobrados" sub="Ganancia directa, no se retiran" valor={resumen.cuentaPapeleria.cartones.generados} />
         <Sep />
         <StatRow
           label="Disponible en la cuenta"

@@ -21,7 +21,9 @@
     "condonar": "tsx scripts/condonar-saldos-viejos.ts",
     "restaurar:cobros": "tsx scripts/restaurar-cobros.ts",
     "crear:auditor": "tsx scripts/crear-auditor.ts",
-    "rotar:mongo": "tsx scripts/rotar-mongo.ts"
+    "rotar:mongo": "tsx scripts/rotar-mongo.ts",
+    "corregir:renovacion": "tsx scripts/corregir-renovacion.ts",
+    "recalcular:cuotas": "tsx scripts/recalcular-cuotas.ts"
   },
   "dependencies": {
     "@types/bcryptjs": "^2.4.6",

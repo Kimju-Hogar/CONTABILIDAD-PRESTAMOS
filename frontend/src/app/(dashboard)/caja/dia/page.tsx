@@ -21,7 +21,7 @@ interface Detalle {
   caja?: { observaciones?: string; cobrador?: { nombre: string } } | null;
   totales: {
     totalCobrado: number; cantidadCobros: number;
-    totalPrestado: number; cantidadPrestamos: number;
+    totalPrestado: number; cantidadPrestamos: number; cargosCobrados: number;
     totalPapeleria: number; totalCartones: number;
     totalGastos: number; otrosIngresos: number; otrosEgresos: number;
   };
@@ -174,6 +174,14 @@ function ReporteDia() {
               valor={data.totales.totalCobrado}
               tono="positivo"
             />
+            {data.totales.cargosCobrados > 0 && (
+              <StatRow
+                label="Cargos de renovación cobrados"
+                sub="Papelería y cartón pagados al renovar tarjeta"
+                valor={data.totales.cargosCobrados}
+                tono="positivo"
+              />
+            )}
             {data.totales.otrosIngresos > 0 && (
               <StatRow label="Otros ingresos" valor={data.totales.otrosIngresos} tono="positivo" />
             )}

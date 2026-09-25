@@ -106,7 +106,7 @@ export class CobrosService {
     // Actualizar préstamo
     prestamo.saldoPendiente = saldoDespues;
     prestamo.totalCobrado += dto.monto;
-    prestamo.ganancia = Math.max(0, prestamo.totalCobrado - prestamo.capital - (prestamo.papeleriaRetirada ? (prestamo.papeleria ?? 0) : 0) - (prestamo.cartonRetirado ? (prestamo.carton ?? 0) : 0));
+    prestamo.ganancia = Math.max(0, prestamo.totalCobrado - prestamo.capital - (prestamo.papeleriaRetirada ? (prestamo.papeleria ?? 0) : 0));
 
     if (saldoDespues <= 0 || dto.tipo === 'total') {
       prestamo.estado = 'completado';
@@ -196,7 +196,7 @@ export class CobrosService {
     if (prestamo) {
       prestamo.saldoPendiente += cobro.monto;
       prestamo.totalCobrado -= cobro.monto;
-      prestamo.ganancia = Math.max(0, prestamo.totalCobrado - prestamo.capital - (prestamo.papeleriaRetirada ? (prestamo.papeleria ?? 0) : 0) - (prestamo.cartonRetirado ? (prestamo.carton ?? 0) : 0));
+      prestamo.ganancia = Math.max(0, prestamo.totalCobrado - prestamo.capital - (prestamo.papeleriaRetirada ? (prestamo.papeleria ?? 0) : 0));
 
       // Revertir estado del préstamo si estaba completado
       if (prestamo.estado === 'completado') {
@@ -263,7 +263,7 @@ export class CobrosService {
     if (prestamo) {
       prestamo.saldoPendiente += cobro.monto;
       prestamo.totalCobrado -= cobro.monto;
-      prestamo.ganancia = Math.max(0, prestamo.totalCobrado - prestamo.capital - (prestamo.papeleriaRetirada ? (prestamo.papeleria ?? 0) : 0) - (prestamo.cartonRetirado ? (prestamo.carton ?? 0) : 0));
+      prestamo.ganancia = Math.max(0, prestamo.totalCobrado - prestamo.capital - (prestamo.papeleriaRetirada ? (prestamo.papeleria ?? 0) : 0));
 
       if (prestamo.estado === 'completado') {
         prestamo.estado = 'activo';

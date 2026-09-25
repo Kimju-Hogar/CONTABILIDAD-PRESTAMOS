@@ -246,7 +246,7 @@ export default function RenovarPrestamoPage() {
             { label: 'Papelería',                     value: `- ${formatCOP(preview.papeleria)}` },
             { label: 'Renovación de cartón',          value: `- ${formatCOP(carton)}` },
             {
-              label: recibeEnMano >= 0 ? 'El cliente recibe en mano' : 'El cliente debe poner',
+              label: recibeEnMano >= 0 ? 'Le entregas en efectivo' : 'Él te paga en efectivo',
               value: formatCOP(Math.abs(recibeEnMano)),
               hi: true,
             },
@@ -274,6 +274,25 @@ export default function RenovarPrestamoPage() {
               </div>
             )
           )}
+        </div>
+      )}
+
+      {/* El cobrador tiene que saber qué efectivo mover antes de confirmar */}
+      {preview && (
+        <div className="card" style={{
+          padding: '12px 14px',
+          borderLeft: `3px solid ${recibeEnMano >= 0 ? 'var(--danger-500)' : 'var(--success-500)'}`,
+        }}>
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+            {recibeEnMano >= 0
+              ? `Saca ${formatCOP(recibeEnMano)} de la caja y entrégaselos`
+              : `Cóbrale ${formatCOP(Math.abs(recibeEnMano))} y mételos a la caja`}
+          </p>
+          <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--text-muted)' }}>
+            {recibeEnMano >= 0
+              ? 'La caja del día registra esa salida automáticamente.'
+              : 'Son la papelería y el cartón. Entran a la caja del día y cuentan como ganancia.'}
+          </p>
         </div>
       )}
 

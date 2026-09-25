@@ -8,10 +8,27 @@ import { apiClient } from '@/services/api';
 import { useRol } from '@/hooks/useRol';
 import { formatCOP, formatFechaCO, formatFechaHoraCO, porcentajeProgreso } from '@/lib/utils';
 
+// Un abono cuenta como día atendido: sólo va en rojo el día que no entró nada
 const CUOTA_COLORS: Record<string, string> = {
   pagada: 'var(--success-500)', vencida: 'var(--danger-500)',
-  pendiente: 'var(--border)', parcial: 'var(--warning-500)',
+  pendiente: 'var(--border)', parcial: 'var(--success-500)',
 };
+
+const CUOTA_ETIQUETAS: Record<string, string> = {
+  pagada: 'Pagada', vencida: 'Sin pagar', pendiente: 'Pendiente', parcial: 'Abonada',
+};
+
+/**
+ * Cómo se pinta cada día del mapa.
+ *
+ * El parcial se ve verde porque el cliente sí pagó, pero con la parte que le
+ * falta en un verde más claro, para distinguirlo de un día completo de un vistazo.
+ */
+function fondoCuota(c: { estado: string; monto: number; montoPagado?: number }): string {
+  if (c.estado !== 'parcial') return CUOTA_COLORS[c.estado] ?? 'var(--border)';
+  const cubierto = Math.min(100, Math.round(((c.montoPagado ?? 0) / (c.monto || 1)) * 100));
+  return `linear-gradient(to right, var(--success-500) ${cubierto}%, rgb(16 185 129 / 0.35) ${cubierto}%)`;
+}
 
 const LABEL_MODALIDAD: Record<string, string> = {
   diaria:    'cuota diaria',
@@ -98,15 +115,6 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
     onError: (err: any) => alert(err.response?.data?.message || 'Error al retirar papelería'),
   });
 
-  const { mutate: retirarCarton, isPending: retirandoCarton } = useMutation({
-    mutationFn: () => apiClient.post(`/api/prestamos/${id}/retirar-carton`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['prestamo', id] });
-      queryClient.invalidateQueries({ queryKey: ['prestamos'] });
-      queryClient.invalidateQueries({ queryKey: ['caja-estado'] });
-    },
-    onError: (err: any) => alert(err.response?.data?.message || 'Error al retirar el cartón'),
-  });
 
   const { mutate: eliminarCobro, isPending: eliminandoCobro } = useMutation({
     mutationFn: (cobroId: string) => apiClient.delete(`/api/cobros/${cobroId}`),
@@ -143,7 +151,10 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
   const prog = porcentajeProgreso(prestamo.totalCobrado, prestamo.totalPagar);
   const isActivo = prestamo.estado === 'activo';
   const cuotasVencidas = prestamo.cuotas?.filter((c: { estado: string }) => c.estado === 'vencida').length ?? 0;
-  const cuotasPagadas  = prestamo.cuotas?.filter((c: { estado: string }) => c.estado === 'pagada').length  ?? 0;
+  const cuotasCompletas = prestamo.cuotas?.filter((c: { estado: string }) => c.estado === 'pagada').length ?? 0;
+  const cuotasParciales = prestamo.cuotas?.filter((c: { estado: string }) => c.estado === 'parcial').length ?? 0;
+  // Un día con abono cuenta como atendido, aunque haya sido por menos
+  const cuotasPagadas = cuotasCompletas + cuotasParciales;
   const labelCuota     = LABEL_MODALIDAD[prestamo.modalidad] ?? 'cuota';
 
   return (
@@ -331,13 +342,21 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
         {/* Contadores de cuotas */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginTop: 14 }}>
           {[
-            { label: 'Pagadas',   count: cuotasPagadas,  color: 'var(--success-500)' },
-            { label: 'Vencidas',  count: cuotasVencidas, color: 'var(--danger-500)' },
+            {
+              label: 'Pagadas',
+              count: cuotasPagadas,
+              color: 'var(--success-500)',
+              nota: cuotasParciales > 0 ? `${cuotasParciales} por abono` : undefined,
+            },
+            { label: 'Sin pagar', count: cuotasVencidas, color: 'var(--danger-500)' },
             { label: 'Pendientes',count: (prestamo.numeroCuotas - cuotasPagadas - cuotasVencidas), color: 'var(--text-muted)' },
-          ].map(({ label, count, color }) => (
+          ].map(({ label, count, color, nota }) => (
             <div key={label} style={{ textAlign: 'center', padding: '10px 8px',
               background: 'var(--bg-input)', borderRadius: 'var(--radius-md)' }}>
               <p style={{ margin: 0, fontSize: 22, fontWeight: 800, color }}>{count}</p>
+              {nota && (
+                <p style={{ margin: 0, fontSize: 9.5, color: 'var(--success-600)', fontWeight: 700 }}>{nota}</p>
+              )}
               <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>{label}</p>
             </div>
           ))}
@@ -355,11 +374,15 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
           {(prestamo.cuotas ?? []).map((cuota: CuotaDetalle) => (
             <div
               key={cuota.numero}
-              title={`Cuota ${cuota.numero}: ${cuota.estado}`}
+              title={
+                cuota.estado === 'parcial'
+                  ? `Cuota ${cuota.numero}: abonó ${formatCOP(cuota.montoPagado ?? 0)} de ${formatCOP(cuota.monto)}`
+                  : `Cuota ${cuota.numero}: ${CUOTA_ETIQUETAS[cuota.estado] ?? cuota.estado}`
+              }
               onClick={() => setCuotaDetalle(cuota)}
               style={{
                 height: 18, borderRadius: 3,
-                background: CUOTA_COLORS[cuota.estado] ?? 'var(--border)',
+                background: fondoCuota(cuota),
                 cursor: 'pointer', position: 'relative',
                 transition: 'transform 0.1s, opacity 0.1s',
               }}
@@ -370,13 +393,13 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
         </div>
         <div style={{ display: 'flex', gap: 16, marginTop: 10, flexWrap: 'wrap' }}>
           {[
-            { label: 'Pagada',   color: 'var(--success-500)' },
-            { label: 'Vencida',  color: 'var(--danger-500)' },
-            { label: 'Pendiente',color: 'var(--border)' },
-            { label: 'Parcial',  color: 'var(--warning-500)' },
+            { label: 'Pagada',        color: 'var(--success-500)' },
+            { label: 'Abonó (parcial)', color: 'linear-gradient(to right, var(--success-500) 55%, rgb(16 185 129 / 0.35) 55%)' },
+            { label: 'No pagó',       color: 'var(--danger-500)' },
+            { label: 'Pendiente',     color: 'var(--border)' },
           ].map(({ label, color }) => (
             <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <div style={{ width: 10, height: 10, borderRadius: 2, background: color }} />
+              <div style={{ width: 14, height: 10, borderRadius: 2, background: color }} />
               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{label}</span>
             </div>
           ))}
@@ -514,28 +537,6 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
               Retirar Papelería ({formatCOP(prestamo.papeleria ?? 0)})
             </button>
           )}
-          {!prestamo.cartonRetirado && (prestamo.carton ?? 0) > 0 && (
-            <button
-              type="button"
-              disabled={retirandoCarton}
-              onClick={() => {
-                if (window.confirm(`¿Retirar ${formatCOP(prestamo.carton ?? 0)} de renovación de cartón?`)) {
-                  retirarCarton();
-                }
-              }}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                padding: '13px 20px', borderRadius: 'var(--radius-md)',
-                border: '1.5px solid rgb(245 158 11 / 0.6)',
-                background: 'rgb(245 158 11 / 0.08)',
-                color: 'rgb(217 119 6)', fontWeight: 700, fontSize: 15,
-                cursor: 'pointer', width: '100%',
-              }}
-            >
-              <PackageCheck size={18} />
-              {retirandoCarton ? 'Retirando…' : `Retirar Cartón (${formatCOP(prestamo.carton ?? 0)})`}
-            </button>
-          )}
           <button
             className="btn-danger"
             onClick={() => setShowCancelModal(true)}
@@ -632,17 +633,43 @@ export default function PrestamoDetailPage({ params }: { params: Promise<{ id: s
               color: CUOTA_COLORS[cuotaDetalle.estado] ?? 'var(--text-muted)',
               textTransform: 'uppercase', letterSpacing: '0.04em',
             }}>
-              {cuotaDetalle.estado}
+              {CUOTA_ETIQUETAS[cuotaDetalle.estado] ?? cuotaDetalle.estado}
             </span>
+
+            {/* Explicación del abono: el día cuenta como pagado aunque falte plata */}
+            {cuotaDetalle.estado === 'parcial' && (
+              <div style={{
+                marginTop: 14, padding: '11px 13px',
+                borderRadius: 'var(--radius-md)',
+                background: 'rgb(16 185 129 / 0.1)',
+                borderLeft: '3px solid var(--success-500)',
+              }}>
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--success-600)' }}>
+                  Este día sí pagó
+                </p>
+                <p style={{ margin: '3px 0 0', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  Abonó <strong>{formatCOP(cuotaDetalle.montoPagado ?? 0)}</strong> de los{' '}
+                  <strong>{formatCOP(cuotaDetalle.monto)}</strong> de la cuota. Le faltan{' '}
+                  <strong>{formatCOP(Math.max(0, cuotaDetalle.monto - (cuotaDetalle.montoPagado ?? 0)))}</strong>,
+                  que se cubren con los próximos abonos.
+                </p>
+              </div>
+            )}
 
             <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
               {[
                 { label: 'Fecha esperada', value: formatFechaCO(cuotaDetalle.fechaEsperada) },
-                { label: 'Monto', value: formatCOP(cuotaDetalle.monto), hi: true },
-                ...(cuotaDetalle.fechaPago ? [{ label: 'Fecha de pago', value: formatFechaCO(cuotaDetalle.fechaPago) }] : []),
-                ...(cuotaDetalle.montoPagado != null && cuotaDetalle.montoPagado !== cuotaDetalle.monto
-                  ? [{ label: 'Monto pagado', value: formatCOP(cuotaDetalle.montoPagado), hi: true }]
+                { label: 'Valor de la cuota', value: formatCOP(cuotaDetalle.monto), hi: true },
+                ...(cuotaDetalle.montoPagado != null
+                  ? [{ label: 'Abonado', value: formatCOP(cuotaDetalle.montoPagado), hi: true }]
                   : []),
+                ...(cuotaDetalle.estado === 'parcial'
+                  ? [{
+                      label: 'Le falta',
+                      value: formatCOP(Math.max(0, cuotaDetalle.monto - (cuotaDetalle.montoPagado ?? 0))),
+                    }]
+                  : []),
+                ...(cuotaDetalle.fechaPago ? [{ label: 'Fecha de pago', value: formatFechaCO(cuotaDetalle.fechaPago) }] : []),
               ].map(({ label, value, hi }) => (
                 <div key={label} style={{
                   display: 'flex', justifyContent: 'space-between',

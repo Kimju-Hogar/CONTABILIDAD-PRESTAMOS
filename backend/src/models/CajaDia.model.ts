@@ -18,6 +18,7 @@ export interface ICajaDia extends Document {
   // Snapshot de movimientos del día (se congela al cerrar)
   totalCobrado: number;      // cobros recibidos
   totalPrestado: number;     // efectivo entregado a clientes (montoDesembolsado)
+  cargosCobrados: number;    // efectivo recibido por cargos de renovación
   totalPapeleria: number;    // papelería retenida en préstamos del día
   totalCartones: number;     // renovación de cartones cobrada
   totalGastos: number;       // gastos registrados
@@ -54,6 +55,7 @@ const CajaDiaSchema = new Schema<ICajaDia>(
 
     totalCobrado: { type: Number, default: 0 },
     totalPrestado: { type: Number, default: 0 },
+    cargosCobrados: { type: Number, default: 0 },
     totalPapeleria: { type: Number, default: 0 },
     totalCartones: { type: Number, default: 0 },
     totalGastos: { type: Number, default: 0 },

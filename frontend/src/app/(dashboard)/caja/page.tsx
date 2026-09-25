@@ -37,6 +37,7 @@ interface EstadoCaja {
     cantidadCobros: number;
     totalPrestado: number;
     cantidadPrestamos: number;
+    cargosCobrados: number;
     totalPapeleria: number;
     totalCartones: number;
     totalGastos: number;
@@ -314,6 +315,14 @@ export default function CajaPage() {
           valor={t.totalCobrado}
           tono="positivo"
         />
+        {t.cargosCobrados > 0 && (
+          <StatRow
+            label="Cargos de renovación cobrados"
+            sub="Papelería y cartón que pagó el cliente al renovar"
+            valor={t.cargosCobrados}
+            tono="positivo"
+          />
+        )}
         {t.otrosIngresos > 0 && (
           <StatRow label="Otros ingresos" valor={t.otrosIngresos} tono="positivo" />
         )}

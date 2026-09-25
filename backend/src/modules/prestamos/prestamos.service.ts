@@ -405,29 +405,6 @@ export class PrestamosService {
     return prestamo;
   }
 
-  // ─── Retirar renovación de cartón ─────────────────────────────
-  async retirarCarton(id: string, usuarioId: string): Promise<IPrestamo> {
-    const prestamo = await PrestamoModel.findById(id);
-    if (!prestamo) throw new NotFoundError('Préstamo');
-
-    if (prestamo.cartonRetirado) {
-      throw new AppError('El cartón de este préstamo ya fue retirado anteriormente', 400);
-    }
-
-    if ((prestamo.carton ?? 0) <= 0) {
-      throw new AppError('Este préstamo no tiene renovación de cartón registrada', 400);
-    }
-
-    prestamo.cartonRetirado = true;
-    prestamo.cartonRetiradoEn = new Date();
-    prestamo.ganancia = Math.max(0, prestamo.ganancia - prestamo.carton);
-    prestamo.updatedBy = new mongoose.Types.ObjectId(usuarioId);
-    await prestamo.save();
-
-    await this.registrarRetiroEnCaja(prestamo, prestamo.carton, 'Retiro de renovación de cartón', usuarioId);
-
-    return prestamo;
-  }
 
   /**
    * Deja constancia en el libro de caja de que el efectivo de la cuenta de
