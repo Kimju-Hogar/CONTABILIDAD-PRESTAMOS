@@ -45,6 +45,13 @@ export default function NuevoPrestamoPage() {
   const [interesVal, setInteresVal]   = useState('20');
   const [cartonVal, setCartonVal]     = useState('');
 
+  // Lo que hay en la caja ahora mismo: de ahí sale el desembolso
+  const { data: caja } = useQuery<{ saldoEsperado: number; baseInicial: number }>({
+    queryKey: ['caja-estado', ''],
+    queryFn: () => apiClient.get('/api/caja/estado').then((r) => r.data.data),
+    staleTime: 30_000,
+  });
+
   // Parámetros del negocio (valor del cartón configurable por el admin)
   const { data: config } = useQuery<{ valorCarton: number }>({
     queryKey: ['configuracion-negocio'],
@@ -370,6 +377,46 @@ export default function NuevoPrestamoPage() {
             )}
           </div>
         )}
+
+        {/* ── De dónde sale la plata ── */}
+        {preview && caja && (() => {
+          const enCaja = caja.saldoEsperado;
+          const sale = preview.montoDesembolsado;
+          const queda = enCaja - sale;
+          const alcanza = queda >= 0;
+          return (
+            <div className="card" style={{
+              borderLeft: `3px solid ${alcanza ? 'var(--brand-500)' : 'var(--danger-500)'}`,
+            }}>
+              <h3 style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 800 }}>Efecto en tu caja</h3>
+              {[
+                { label: 'Tienes ahora en caja', value: formatCOP(enCaja) },
+                { label: 'Le entregas', value: `- ${formatCOP(sale)}` },
+              ].map(({ label, value }) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{label}</span>
+                  <span style={{ fontSize: 14, fontWeight: 600 }}>{value}</span>
+                </div>
+              ))}
+              <div className="divider" style={{ margin: '8px 0' }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 13, fontWeight: 700 }}>Te queda</span>
+                <span style={{
+                  fontSize: 16, fontWeight: 800,
+                  color: alcanza ? 'var(--success-600)' : 'var(--danger-600)',
+                }}>
+                  {formatCOP(queda)}
+                </span>
+              </div>
+              {!alcanza && (
+                <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--danger-600)', fontWeight: 600 }}>
+                  No te alcanza con lo que hay registrado en caja. Puedes continuar igual,
+                  pero el cierre del día te va a quedar en negativo.
+                </p>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ── Observaciones ── */}
         <div className="card">

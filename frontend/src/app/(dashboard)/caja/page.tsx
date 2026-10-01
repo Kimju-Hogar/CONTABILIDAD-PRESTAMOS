@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Wallet, Lock, Unlock, Plus, Trash2, Loader2, TrendingUp, TrendingDown,
-  FileText, AlertTriangle, CheckCircle2, History, ArrowRight, Calculator, Receipt,
+  FileText, AlertTriangle, CheckCircle2, History, ArrowRight, Calculator, Receipt, PiggyBank,
 } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { useRol } from '@/hooks/useRol';
@@ -290,17 +290,27 @@ export default function CajaPage() {
       {data.estado === 'sin_abrir' && (
         <div className="card" style={{ padding: 16, textAlign: 'center' }}>
           <Unlock size={26} color="var(--brand-500)" />
-          <h2 style={{ margin: '8px 0 4px', fontSize: 15, fontWeight: 800 }}>Aún no abres la caja</h2>
-          <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--text-muted)' }}>
-            {data.baseSugerida
-              ? `Vienes con ${formatCOP(data.baseSugerida.base)} del cierre anterior.`
-              : 'Registra con cuánto efectivo arrancas el día.'}
+          <h2 style={{ margin: '8px 0 4px', fontSize: 15, fontWeight: 800 }}>
+            {(data.baseSugerida?.base ?? 0) > 0
+              ? `Arrancas con ${formatCOP(data.baseSugerida!.base)}`
+              : 'Aún no abres la caja'}
+          </h2>
+          <p style={{ margin: '0 0 12px', fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            {data.baseSugerida && data.baseSugerida.base > 0 ? (
+              <>
+                Es lo que te quedó del día anterior ({data.baseSugerida.origen.toLowerCase()}).
+                La caja se abre sola con ese valor en cuanto registres el primer cobro o préstamo;
+                solo toca el botón si quieres arrancar con otra cantidad.
+              </>
+            ) : (
+              'Registra con cuánto efectivo arrancas el día.'
+            )}
           </p>
           <button
-            className="btn-primary"
+            className="btn-secondary"
             onClick={() => { setBase(String(data.baseSugerida?.base ?? 0)); setError(null); setModal('abrir'); }}
           >
-            Abrir el día
+            {(data.baseSugerida?.base ?? 0) > 0 ? 'Abrir con otra base' : 'Abrir el día'}
           </button>
         </div>
       )}
@@ -416,6 +426,24 @@ export default function CajaPage() {
           ))
         )}
       </SectionCard>
+
+      {/* ─── Meter plata para prestar ───────────────────────── */}
+      {!cerrada && (
+        <button
+          className="btn-secondary"
+          onClick={() => {
+            setMovTipo('ingreso');
+            setMovConcepto('inyeccion_capital');
+            setMovMonto('');
+            setMovDesc('');
+            setError(null);
+            setModal('movimiento');
+          }}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+        >
+          <PiggyBank size={17} /> Meter plata a la caja para prestar
+        </button>
+      )}
 
       {/* ─── Cierre ─────────────────────────────────────────── */}
       {abierta && (

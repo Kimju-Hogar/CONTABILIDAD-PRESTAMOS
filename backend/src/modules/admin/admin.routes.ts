@@ -10,7 +10,7 @@ import { UsuarioModel } from '../../models/Usuario.model';
 import { AuditLogModel } from '../../models/AuditLog.model';
 import { ConfiguracionModel, obtenerConfiguracion } from '../../models/Configuracion.model';
 import { env } from '../../config/env';
-import type { Periodo } from '../../shared/utils/fechas';
+import { rangoPeriodo, type Periodo } from '../../shared/utils/fechas';
 
 const router = Router();
 router.use(authMiddleware, adminOnly);
@@ -145,6 +145,14 @@ router.get('/auditoria/acciones', async (_req: Request, res: Response, next: Nex
   try {
     const acciones = await AuditLogModel.distinct('accion');
     ResponseHelper.success(res, acciones.sort());
+  } catch (error) { next(error); }
+});
+
+// ─── Capital invertido por el dueño ───────────────────────────
+router.get('/capital', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { periodo, desde, hasta } = leerPeriodo(req);
+    ResponseHelper.success(res, await adminService.capitalInvertido(rangoPeriodo(periodo, desde, hasta)));
   } catch (error) { next(error); }
 });
 

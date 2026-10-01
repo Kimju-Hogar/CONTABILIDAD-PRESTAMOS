@@ -123,21 +123,68 @@ export class CajaService {
    * de ese cobrador. Si nunca ha cerrado, cae al valor configurado.
    */
   async baseSugerida(fechaKey: string, cobradorId: string): Promise<{ base: number; origen: string }> {
+    // El último día que tuvo caja, esté cerrado o no. Si el cobrador olvidó
+    // cerrar, igual se arrastra lo que le quedó: de otro modo el día nuevo
+    // arrancaría en cero y habría que escribir la base a mano.
     const anterior = await CajaDiaModel.findOne({
       cobrador: oid(cobradorId),
-      estado: 'cerrado',
       fechaKey: { $lt: fechaKey },
     })
       .sort({ fechaKey: -1 })
       .lean();
 
     if (anterior) {
-      const base = anterior.saldoContado ?? anterior.saldoEsperado;
-      return { base: Math.max(0, base), origen: `Cierre del ${anterior.fechaKey}` };
+      if (anterior.estado === 'cerrado') {
+        const base = anterior.saldoContado ?? anterior.saldoEsperado;
+        return { base: Math.max(0, base), origen: `Cierre del ${anterior.fechaKey}` };
+      }
+      // Quedó abierto: se calcula con qué terminó ese día
+      const t = await this.calcularTotalesDia(anterior.fechaKey, cobradorId);
+      const base = this.saldoEsperado(anterior.baseInicial, t);
+      return {
+        base: Math.max(0, base),
+        origen: `Saldo del ${anterior.fechaKey} (quedó sin cerrar)`,
+      };
     }
 
     const config = await obtenerConfiguracion();
-    return { base: config.baseCajaSugerida, origen: 'Valor configurado (sin cierres previos)' };
+    return { base: config.baseCajaSugerida, origen: 'Valor configurado (sin días previos)' };
+  }
+
+  /**
+   * Garantiza que el día tenga caja antes de mover plata.
+   *
+   * Se llama justo antes de registrar un cobro, un préstamo o un gasto: si el
+   * cobrador todavía no abrió el día, la caja se abre sola arrastrando lo que
+   * le quedó del día anterior. Así nunca hay movimientos huérfanos y el saldo
+   * encadena solo de un día al siguiente.
+   */
+  async asegurarCajaAbierta(cobradorId: string, fecha?: string): Promise<ICajaDia> {
+    const fechaKey = fecha ?? keyDia();
+
+    const existente = await CajaDiaModel.findOne({ cobrador: oid(cobradorId), fechaKey });
+    if (existente) return existente;
+
+    const { base } = await this.baseSugerida(fechaKey, cobradorId);
+
+    try {
+      return await CajaDiaModel.create({
+        fechaKey,
+        fecha: inicioDeKey(fechaKey),
+        cobrador: cobradorId,
+        baseInicial: base,
+        estado: 'abierto',
+        observaciones: 'Apertura automática: arrastre del día anterior',
+        abiertoPor: cobradorId,
+        abiertoEn: new Date(),
+      });
+    } catch (e) {
+      // Dos movimientos a la vez pueden chocar contra el índice único;
+      // si otro ya la creó, se usa esa.
+      const yaCreada = await CajaDiaModel.findOne({ cobrador: oid(cobradorId), fechaKey });
+      if (yaCreada) return yaCreada;
+      throw e;
+    }
   }
 
   // ─── Estado del día ─────────────────────────────────────────
@@ -206,10 +253,10 @@ export class CajaService {
       estado: 'sin_abrir' as const,
       caja: null,
       totales,
-      baseInicial: 0,
-      // Si no abrió la caja, el "esperado" se muestra igual con base 0 para que
-      // el cobrador vea el neto del día aunque no haya registrado apertura.
-      saldoEsperado: this.saldoEsperado(0, totales),
+      // Aunque todavía no se abra formalmente, el saldo ya cuenta con lo que
+      // quedó ayer: es la plata que el cobrador tiene en el bolsillo.
+      baseInicial: sugerida.base,
+      saldoEsperado: this.saldoEsperado(sugerida.base, totales),
       saldoContado: null,
       diferencia: 0,
       movimientos,

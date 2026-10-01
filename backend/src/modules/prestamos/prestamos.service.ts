@@ -10,6 +10,7 @@ import { getSocketIO } from '../../config/socket';
 import { obtenerConfiguracion } from '../../models/Configuracion.model';
 import { MovimientoCajaModel } from '../../models/MovimientoCaja.model';
 import { keyDia } from '../../shared/utils/fechas';
+import { cajaService } from '../caja/caja.service';
 import {
   INTERES_FIJO, DEFAULT_CUOTAS, calcularPapeleria,
   type Modalidad,
@@ -210,6 +211,9 @@ export class PrestamosService {
       createdBy: cobradorId,
     });
 
+    // La plata sale de la caja del día: si no está abierta, se abre sola
+    await cajaService.asegurarCajaAbierta(cobradorId);
+
     await clientesRepository.incrementarPrestamosActivos(dto.clienteId, 1);
 
     // Notificar en tiempo real
@@ -292,6 +296,9 @@ export class PrestamosService {
       observaciones: dto.observaciones,
       createdBy: usuarioId,
     });
+
+    // Una renovación también mueve caja: sale la plata nueva, o entran los cargos
+    await cajaService.asegurarCajaAbierta(String(original.cobrador));
 
     return nuevoPrestamo;
   }

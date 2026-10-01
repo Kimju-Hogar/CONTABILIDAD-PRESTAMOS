@@ -67,6 +67,12 @@ interface Resumen {
   patrimonio: {
     enLaCalle: number; capitalPendiente: number; interesPorGanar: number;
     prestamosActivos: number; efectivoEnCaja: number; total: number;
+    capitalInvertido: number; gananciaAcumulada: number;
+  };
+  capital: {
+    invertido: number; vecesInvertido: number;
+    retirado: number; vecesRetirado: number; neto: number;
+    periodo: { invertido: number; retirado: number; neto: number };
   };
 }
 
@@ -192,6 +198,31 @@ export default function AdminPage() {
             </p>
           </div>
         </div>
+
+        {/* De toda esa plata, cuánta pusiste tú y cuánta produjo el negocio */}
+        {resumen.patrimonio.capitalInvertido > 0 && (
+          <div style={{
+            display: 'flex', gap: 10, marginTop: 10,
+            borderTop: '1px solid rgb(255 255 255 / 0.15)', paddingTop: 10,
+          }}>
+            <div style={{ flex: 1 }}>
+              <p style={{ margin: 0, fontSize: 10.5, opacity: 0.7 }}>PUSISTE TÚ</p>
+              <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 800 }}>
+                {formatCOP(resumen.patrimonio.capitalInvertido)}
+              </p>
+            </div>
+            <div style={{ width: 1, background: 'rgb(255 255 255 / 0.15)' }} />
+            <div style={{ flex: 1 }}>
+              <p style={{ margin: 0, fontSize: 10.5, opacity: 0.7 }}>PRODUJO EL NEGOCIO</p>
+              <p style={{
+                margin: '2px 0 0', fontSize: 14, fontWeight: 800,
+                color: resumen.patrimonio.gananciaAcumulada >= 0 ? '#6ee7b7' : '#fca5a5',
+              }}>
+                {formatCOP(resumen.patrimonio.gananciaAcumulada)}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ─── Indicadores principales ────────────────────────── */}
@@ -330,6 +361,48 @@ export default function AdminPage() {
         />
         {resumen.egresos.retiros > 0 && (
           <StatRow label="Retiros del dueño incluidos" valor={resumen.egresos.retiros} tono="muted" />
+        )}
+      </SectionCard>
+
+      {/* ─── Capital que has invertido ──────────────────────── */}
+      <SectionCard titulo="Tu inversión en el negocio" icon={PiggyBank}>
+        <p style={{ margin: '0 0 6px', fontSize: 11.5, color: 'var(--text-muted)' }}>
+          Plata tuya que metiste a la caja para prestar. No es ganancia: es capital.
+        </p>
+        <StatRow
+          label="Has metido"
+          sub={`${resumen.capital.vecesInvertido} ${resumen.capital.vecesInvertido === 1 ? 'vez' : 'veces'}`}
+          valor={resumen.capital.invertido}
+          tono="positivo"
+        />
+        <StatRow
+          label="Has retirado"
+          sub={`${resumen.capital.vecesRetirado} ${resumen.capital.vecesRetirado === 1 ? 'vez' : 'veces'}`}
+          valor={-resumen.capital.retirado}
+          tono="negativo"
+        />
+        <Sep />
+        <StatRow label="Tienes puesto" valor={resumen.capital.neto} negrita />
+        {(resumen.capital.periodo.invertido > 0 || resumen.capital.periodo.retirado > 0) && (
+          <>
+            <Sep />
+            <p style={{ margin: '2px 0 4px', fontSize: 11.5, fontWeight: 700, color: 'var(--text-secondary)' }}>
+              En este periodo
+            </p>
+            {resumen.capital.periodo.invertido > 0 && (
+              <StatRow label="Metiste" valor={resumen.capital.periodo.invertido} tono="positivo" />
+            )}
+            {resumen.capital.periodo.retirado > 0 && (
+              <StatRow label="Retiraste" valor={-resumen.capital.periodo.retirado} tono="negativo" />
+            )}
+          </>
+        )}
+        {resumen.capital.invertido === 0 && (
+          <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            Todavía no has registrado ninguna inversión. Para hacerlo, entra a{' '}
+            <strong>Caja</strong> y toca <strong>&ldquo;Meter plata a la caja para prestar&rdquo;</strong>.
+            Esa plata entra al efectivo del día y de ahí salen los préstamos, las renovaciones y los gastos.
+          </p>
         )}
       </SectionCard>
 

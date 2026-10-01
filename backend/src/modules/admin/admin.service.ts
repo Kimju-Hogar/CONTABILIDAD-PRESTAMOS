@@ -290,6 +290,55 @@ export class AdminService {
   }
 
   /**
+   * Cuánta plata propia hay metida en el negocio.
+   *
+   * Las inyecciones de capital son dinero del dueño que entra a la caja para
+   * prestar: no son ganancia, son inversión. Los retiros de utilidad son lo
+   * contrario. La diferencia es lo que realmente tiene puesto.
+   */
+  async capitalInvertido(rango?: Rango) {
+    const porConcepto = async (conceptos: string[], acotado: boolean) => {
+      const match: Record<string, unknown> = { concepto: { $in: conceptos }, deletedAt: null };
+      if (acotado && rango) match.fecha = { $gte: rango.inicio, $lte: rango.fin };
+      const [r] = await MovimientoCajaModel.aggregate([
+        { $match: match },
+        { $group: { _id: null, total: { $sum: '$monto' }, cantidad: { $sum: 1 } } },
+      ]);
+      return { total: r?.total ?? 0, cantidad: r?.cantidad ?? 0 };
+    };
+
+    const [invertido, retirado, invertidoPeriodo, retiradoPeriodo] = await Promise.all([
+      porConcepto(['inyeccion_capital'], false),
+      porConcepto(['retiro_utilidad'], false),
+      porConcepto(['inyeccion_capital'], true),
+      porConcepto(['retiro_utilidad'], true),
+    ]);
+
+    const ultimos = await MovimientoCajaModel.find({
+      concepto: { $in: ['inyeccion_capital', 'retiro_utilidad'] },
+      deletedAt: null,
+    })
+      .populate('registradoPor', 'nombre')
+      .sort({ fecha: -1 })
+      .limit(10)
+      .lean();
+
+    return {
+      invertido: invertido.total,
+      vecesInvertido: invertido.cantidad,
+      retirado: retirado.total,
+      vecesRetirado: retirado.cantidad,
+      neto: invertido.total - retirado.total,
+      periodo: {
+        invertido: invertidoPeriodo.total,
+        retirado: retiradoPeriodo.total,
+        neto: invertidoPeriodo.total - retiradoPeriodo.total,
+      },
+      ultimos,
+    };
+  }
+
+  /**
    * Patrimonio del negocio: la plata que está afuera más la que hay en caja.
    *
    * "En la calle" es el saldo por cobrar, o sea capital pendiente más el
@@ -364,7 +413,7 @@ export class AdminService {
   async resumen(periodo: Periodo, desde?: string, hasta?: string, cobradorId?: string) {
     const rango = rangoPeriodo(periodo, desde, hasta);
 
-    const [recaudo, colocacion, egresos, cart, papeleria, caja, patrimonio] = await Promise.all([
+    const [recaudo, colocacion, egresos, cart, papeleria, caja, patrimonio, capital] = await Promise.all([
       this.recaudoPeriodo(rango, cobradorId),
       this.colocacionPeriodo(rango, cobradorId),
       this.egresosPeriodo(rango, cobradorId),
@@ -372,6 +421,7 @@ export class AdminService {
       this.cuentaPapeleria(cobradorId),
       this.resumenCaja(rango, cobradorId),
       this.patrimonio(cobradorId),
+      this.capitalInvertido(rango),
     ]);
 
     // La papelería es lo que se lleva el cobrador, así que no entra en la
@@ -437,7 +487,13 @@ export class AdminService {
       cartera: cart,
       cuentaPapeleria: papeleria,
       caja,
-      patrimonio,
+      patrimonio: {
+        ...patrimonio,
+        capitalInvertido: capital.neto,
+        // Lo que el negocio produjo por encima de la plata que pusiste
+        gananciaAcumulada: patrimonio.total - capital.neto,
+      },
+      capital,
     };
   }
 

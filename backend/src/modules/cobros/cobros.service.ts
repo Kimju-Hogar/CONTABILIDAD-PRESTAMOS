@@ -7,6 +7,7 @@ import { clientesRepository } from '../clientes/clientes.repository';
 import { NotFoundError, AppError, ForbiddenError } from '../../shared/middleware/error.middleware';
 import { buildPagination } from '../../shared/utils/responses';
 import { getSocketIO } from '../../config/socket';
+import { cajaService } from '../caja/caja.service';
 import type { RegistrarCobroDto, AnularCobroDto, FiltrosCobroDto } from './cobros.dto';
 
 const TIMEZONE = 'America/Bogota';
@@ -115,6 +116,9 @@ export class CobrosService {
     }
 
     await prestamo.save();
+
+    // La caja del día se abre sola si todavía no existe, arrastrando lo de ayer
+    await cajaService.asegurarCajaAbierta(cobradorId);
 
     // Crear registro de cobro
     const cobro = await CobroModel.create({
