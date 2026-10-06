@@ -125,35 +125,69 @@ export class CajaService {
   }
 
   /**
-   * Base sugerida para abrir un día: el efectivo con que quedó el último cierre
-   * de ese cobrador. Si nunca ha cerrado, cae al valor configurado.
+   * Base sugerida para abrir un día: el efectivo con que quedó el día anterior.
+   * Si nunca ha habido caja, cae al valor configurado.
+   *
+   * Puede venir NEGATIVA y se arrastra tal cual: si un día se prestó más de lo
+   * que había en mano, ese faltante sigue vivo hasta que entre plata que lo
+   * tape. Redondearlo a cero escondía el hueco y el saldo nunca cuadraba.
    */
   async baseSugerida(fechaKey: string): Promise<{ base: number; origen: string }> {
-    // El último día que tuvo caja, esté cerrado o no. Si el cobrador olvidó
-    // cerrar, igual se arrastra lo que le quedó: de otro modo el día nuevo
-    // arrancaría en cero y habría que escribir la base a mano.
-    const anterior = await CajaDiaModel.findOne({
-      fechaKey: { $lt: fechaKey },
-    })
-      .sort({ fechaKey: -1 })
+    const previos = await CajaDiaModel.find({ fechaKey: { $lt: fechaKey } })
+      .sort({ fechaKey: 1 })
       .lean();
 
-    if (anterior) {
-      if (anterior.estado === 'cerrado') {
-        const base = anterior.saldoContado ?? anterior.saldoEsperado;
-        return { base: Math.max(0, base), origen: `Cierre del ${anterior.fechaKey}` };
-      }
-      // Quedó abierto: se calcula con qué terminó ese día
-      const t = await this.calcularTotalesDia(anterior.fechaKey);
-      const base = this.saldoEsperado(anterior.baseInicial, t);
-      return {
-        base: Math.max(0, base),
-        origen: `Saldo del ${anterior.fechaKey} (quedó sin cerrar)`,
-      };
+    if (!previos.length) {
+      const config = await obtenerConfiguracion();
+      return { base: config.baseCajaSugerida, origen: 'Valor configurado (sin días previos)' };
     }
 
-    const config = await obtenerConfiguracion();
-    return { base: config.baseCajaSugerida, origen: 'Valor configurado (sin días previos)' };
+    // Se busca el ancla: el último día cuyo arranque no se discute, porque
+    // está cerrado o porque alguien escribió la base a mano. Desde ahí se
+    // rearma la cadena hacia adelante. Así, corregir un día viejo (meter
+    // plata para tapar un faltante) mueve solo todos los días siguientes.
+    let ancla = previos.length - 1;
+    while (
+      ancla > 0 &&
+      previos[ancla]!.estado !== 'cerrado' &&
+      previos[ancla]!.baseAutomatica
+    ) ancla--;
+
+    let saldo = 0;
+    let origen = `Saldo del ${previos[previos.length - 1]!.fechaKey}`;
+
+    for (let i = ancla; i < previos.length; i++) {
+      const dia = previos[i]!;
+      if (dia.estado === 'cerrado') {
+        saldo = dia.saldoContado ?? dia.saldoEsperado;
+        origen = `Cierre del ${dia.fechaKey}`;
+        continue;
+      }
+      // El ancla usa su propia base; los días automáticos que siguen heredan
+      const base = i === ancla || !dia.baseAutomatica ? dia.baseInicial : saldo;
+      const t = await this.calcularTotalesDia(dia.fechaKey);
+      saldo = this.saldoEsperado(base, t);
+      origen = `Saldo del ${dia.fechaKey} (quedó sin cerrar)`;
+    }
+
+    return { base: saldo, origen };
+  }
+
+  /**
+   * La base que de verdad manda para un día.
+   *
+   * Un día cerrado conserva la suya congelada, y una base escrita por una
+   * persona se respeta. Las que puso el sistema se recalculan, para que la
+   * cadena se arregle sola cuando se corrige un día anterior.
+   */
+  private async baseEfectiva(caja: {
+    fechaKey: string;
+    baseInicial: number;
+    estado: 'abierto' | 'cerrado';
+    baseAutomatica?: boolean;
+  }): Promise<number> {
+    if (caja.estado === 'cerrado' || !caja.baseAutomatica) return caja.baseInicial;
+    return (await this.baseSugerida(caja.fechaKey)).base;
   }
 
   /**
@@ -179,6 +213,7 @@ export class CajaService {
         cobrador: usuarioId,
         baseInicial: base,
         estado: 'abierto',
+        baseAutomatica: true,
         observaciones: 'Apertura automática: arrastre del día anterior',
         abiertoPor: usuarioId,
         abiertoEn: new Date(),
@@ -238,13 +273,14 @@ export class CajaService {
     }
 
     if (caja) {
+      const base = await this.baseEfectiva(caja);
       return {
         fechaKey,
         estado: 'abierto' as const,
-        caja,
+        caja: { ...caja, baseInicial: base } as typeof caja,
         totales,
-        baseInicial: caja.baseInicial,
-        saldoEsperado: this.saldoEsperado(caja.baseInicial, totales),
+        baseInicial: base,
+        saldoEsperado: this.saldoEsperado(base, totales),
         saldoContado: null,
         diferencia: 0,
         movimientos,
@@ -288,6 +324,7 @@ export class CajaService {
       fecha: inicioDeKey(fechaKey),
       cobrador: usuarioId,
       baseInicial: dto.baseInicial,
+      baseAutomatica: false,
       estado: 'abierto',
       observaciones: dto.observaciones,
       abiertoPor: usuarioId,
@@ -311,7 +348,11 @@ export class CajaService {
     }
 
     const totales = await this.calcularTotalesDia(fechaKey);
-    const esperado = this.saldoEsperado(caja.baseInicial, totales);
+    // Al cerrar, la base automática se congela con el valor que tenga hoy
+    const base = await this.baseEfectiva(caja);
+    caja.baseInicial = base;
+    caja.baseAutomatica = false;
+    const esperado = this.saldoEsperado(base, totales);
 
     caja.totalCobrado = totales.totalCobrado;
     caja.totalPrestado = totales.totalPrestado;
@@ -325,6 +366,7 @@ export class CajaService {
     caja.saldoContado = dto.saldoContado;
     caja.diferencia = dto.saldoContado - esperado;
     caja.estado = 'cerrado';
+    caja.cierreAutomatico = false;
     caja.cerradoPor = oid(usuarioId);
     caja.cerradoEn = new Date();
     if (dto.observaciones) caja.observaciones = dto.observaciones;
@@ -340,6 +382,80 @@ export class CajaService {
     return caja;
   }
 
+  // ─── Cierre automático de las 11:59 p.m. ───────────────────
+  /**
+   * Cierra un día sin que nadie cuente el efectivo.
+   *
+   * `saldoContado` queda vacío a propósito: decir que se contó justo lo
+   * esperado sería inventar un dato. La diferencia queda en cero y el día
+   * siguiente arranca con el saldo esperado.
+   */
+  async cerrarAutomatico(fechaKey: string): Promise<ICajaDia | null> {
+    const caja = await CajaDiaModel.findOne({ fechaKey });
+    if (!caja || caja.estado === 'cerrado') return null;
+
+    const totales = await this.calcularTotalesDia(fechaKey);
+    const base = await this.baseEfectiva(caja);
+
+    caja.baseInicial = base;
+    caja.baseAutomatica = false;
+    caja.totalCobrado = totales.totalCobrado;
+    caja.totalPrestado = totales.totalPrestado;
+    caja.cargosCobrados = totales.cargosCobrados;
+    caja.totalPapeleria = totales.totalPapeleria;
+    caja.totalCartones = totales.totalCartones;
+    caja.totalGastos = totales.totalGastos;
+    caja.otrosIngresos = totales.otrosIngresos;
+    caja.otrosEgresos = totales.otrosEgresos;
+    caja.saldoEsperado = this.saldoEsperado(base, totales);
+    caja.saldoContado = null;
+    caja.diferencia = 0;
+    caja.estado = 'cerrado';
+    caja.cierreAutomatico = true;
+    caja.cerradoEn = new Date();
+    caja.observaciones = [
+      caja.observaciones,
+      'Cierre automático de las 11:59 p.m.: nadie contó el efectivo.',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
+    await caja.save();
+
+    getSocketIO()?.to('dashboard').emit('caja:cerrada', {
+      fechaKey,
+      automatico: true,
+      saldoEsperado: caja.saldoEsperado,
+    });
+
+    return caja;
+  }
+
+  /**
+   * Cierra todo día que quedó abierto hasta `hasta` (incluido).
+   *
+   * Se llama a las 11:59 p.m. con el día de hoy, y también al arrancar el
+   * servidor: si el VPS estuvo caído a esa hora, los días que quedaron
+   * abiertos se cierran igual en vez de quedar colgados para siempre.
+   */
+  async cerrarPendientesHasta(hasta: string): Promise<string[]> {
+    const abiertos = await CajaDiaModel.find({
+      estado: 'abierto',
+      fechaKey: { $lte: hasta },
+    })
+      .sort({ fechaKey: 1 })
+      .select({ fechaKey: 1 })
+      .lean();
+
+    const cerrados: string[] = [];
+    // En orden: cada cierre congela la base del siguiente
+    for (const dia of abiertos) {
+      const r = await this.cerrarAutomatico(dia.fechaKey);
+      if (r) cerrados.push(dia.fechaKey);
+    }
+    return cerrados;
+  }
+
   /** Reabre un cierre para corregirlo. Solo admin. */
   async reabrir(id: string, motivo: string): Promise<ICajaDia> {
     const caja = await CajaDiaModel.findById(id);
@@ -347,6 +463,7 @@ export class CajaService {
     if (caja.estado === 'abierto') throw new AppError('La caja ya está abierta', 400);
 
     caja.estado = 'abierto';
+    caja.cierreAutomatico = false;
     caja.saldoContado = null;
     caja.diferencia = 0;
     caja.cerradoEn = undefined as unknown as Date;
@@ -387,8 +504,10 @@ export class CajaService {
       filas.map(async (fila) => {
         if (fila.estado === 'cerrado') return fila;
         const t = await this.calcularTotalesDia(fila.fechaKey);
+        const base = await this.baseEfectiva(fila);
         return {
           ...fila,
+          baseInicial: base,
           totalCobrado: t.totalCobrado,
           totalPrestado: t.totalPrestado,
           cargosCobrados: t.cargosCobrados,
@@ -397,7 +516,7 @@ export class CajaService {
           totalGastos: t.totalGastos,
           otrosIngresos: t.otrosIngresos,
           otrosEgresos: t.otrosEgresos,
-          saldoEsperado: this.saldoEsperado(fila.baseInicial, t),
+          saldoEsperado: this.saldoEsperado(base, t),
         };
       })
     );
@@ -416,6 +535,8 @@ export class CajaService {
         400
       );
     }
+    // Si el día todavía no tiene caja, se abre sola arrastrando lo de ayer
+    if (!caja) await this.asegurarCajaAbierta(usuarioId, fechaKey);
 
     const movimiento = await MovimientoCajaModel.create({
       fechaKey,
@@ -492,7 +613,7 @@ export class CajaService {
     ]);
 
     // Un cierre guardado manda sobre el cálculo en vivo
-    const baseInicial = caja?.baseInicial ?? 0;
+    const baseInicial = caja ? await this.baseEfectiva(caja) : 0;
     const esperado = caja?.estado === 'cerrado'
       ? caja.saldoEsperado
       : this.saldoEsperado(baseInicial, totales);

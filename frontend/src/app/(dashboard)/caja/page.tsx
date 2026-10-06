@@ -31,7 +31,7 @@ interface EstadoCaja {
   diferencia: number;
   baseSugerida: { base: number; origen: string } | null;
   movimientos: Movimiento[];
-  caja: { observaciones?: string; cerradoEn?: string } | null;
+  caja: { observaciones?: string; cerradoEn?: string; cierreAutomatico?: boolean } | null;
   totales: {
     totalCobrado: number;
     cantidadCobros: number;
@@ -63,14 +63,20 @@ const CONCEPTOS_EGRESO = ['retiro_utilidad', 'retiro_papeleria', 'prestamo_exter
 
 // ─── Input de dinero ──────────────────────────────────────────
 function InputDinero({
-  valor, onChange, autoFocus, placeholder,
+  valor, onChange, autoFocus, placeholder, permitirNegativo,
 }: {
   valor: string;
   onChange: (v: string) => void;
   autoFocus?: boolean;
   placeholder?: string;
+  /** La base del día puede venir en rojo si ayer se prestó más de lo que había. */
+  permitirNegativo?: boolean;
 }) {
-  const numero = Number(valor.replace(/\D/g, '')) || 0;
+  const limpiar = (v: string) =>
+    permitirNegativo
+      ? (v.startsWith('-') ? '-' : '') + v.replace(/[^\d]/g, '')
+      : v.replace(/\D/g, '');
+  const numero = Number(valor) || 0;
   return (
     <div>
       <input
@@ -79,7 +85,7 @@ function InputDinero({
         autoFocus={autoFocus}
         placeholder={placeholder ?? '0'}
         value={valor}
-        onChange={(e) => onChange(e.target.value.replace(/\D/g, ''))}
+        onChange={(e) => onChange(limpiar(e.target.value))}
         style={{ fontSize: 20, fontWeight: 800, textAlign: 'right' }}
       />
       <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-muted)', textAlign: 'right' }}>
@@ -208,6 +214,11 @@ export default function CajaPage() {
   const t = data.totales;
   const cerrada = data.estado === 'cerrado';
   const abierta = data.estado === 'abierto';
+  // Un día puede quedar en rojo si se prestó más efectivo del que había en mano.
+  // Ese faltante se arrastra al día siguiente hasta que entre plata que lo tape.
+  const enRojo = !cerrada && data.saldoEsperado < 0;
+  const cierreDelReloj = cerrada && !!data.caja?.cierreAutomatico;
+  const faltante = Math.abs(Math.min(0, data.saldoEsperado));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -239,41 +250,80 @@ export default function CajaPage() {
       <StatCard
         label={
           cerrada ? 'Cerraste el día con'
+          : enRojo ? 'La caja quedó en rojo'
           : abierta ? 'Efectivo que debes tener'
           : 'Movimiento del día (sin base)'
         }
         value={formatCOP(cerrada ? (data.saldoContado ?? data.saldoEsperado) : data.saldoEsperado)}
         sub={
-          cerrada
-            ? `Esperado ${formatCOP(data.saldoEsperado)} · Diferencia ${formatCOP(data.diferencia)}`
-            : abierta
-              ? `Base ${formatCOP(data.baseInicial)} + recogido − prestado − gastos`
-              : 'Abre la caja con tu base para ver el efectivo real'
+          cerrada && cierreDelReloj
+            ? 'Lo cerró el sistema a las 11:59 p.m. · nadie contó el efectivo'
+            : cerrada
+              ? `Esperado ${formatCOP(data.saldoEsperado)} · Diferencia ${formatCOP(data.diferencia)}`
+              : abierta
+                ? `Base ${formatCOP(data.baseInicial)} + recogido − prestado − gastos`
+                : 'Abre la caja con tu base para ver el efectivo real'
         }
         gradient={
-          // Ámbar cuando algo pide atención: descuadre al cerrar, o día sin abrir
-          (cerrada && data.diferencia !== 0) || !abierta && !cerrada
-            ? 'linear-gradient(135deg, #d97706, #f59e0b)'
-            : 'linear-gradient(135deg, #059669, #0d9488)'
+          // Rojo si la caja quedó en rojo; ámbar si algo pide atención
+          enRojo
+            ? 'linear-gradient(135deg, #b91c1c, #ef4444)'
+            : (cerrada && !cierreDelReloj && data.diferencia !== 0) || !abierta && !cerrada
+              ? 'linear-gradient(135deg, #d97706, #f59e0b)'
+              : 'linear-gradient(135deg, #059669, #0d9488)'
         }
         icon={Wallet}
       />
+
+      {/* ─── Caja en rojo: cuánto falta para volver a cero ──── */}
+      {enRojo && (
+        <div className="card" style={{ padding: 14, borderLeft: '3px solid var(--danger-500)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <AlertTriangle size={17} color="var(--danger-500)" />
+            <h2 style={{ margin: 0, fontSize: 14.5, fontWeight: 800, color: 'var(--danger-600)' }}>
+              La caja está en rojo por {formatCOP(faltante)}
+            </h2>
+          </div>
+          <p style={{ margin: '0 0 12px', fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            Se prestó más efectivo del que había en mano, así que el faltante se viene
+            arrastrando de un día al otro. Mete {formatCOP(faltante)} y la caja vuelve a cero;
+            si metes más, el resto queda disponible para prestar.
+          </p>
+          <button
+            className="btn-primary"
+            onClick={() => {
+              setMovTipo('ingreso');
+              setMovConcepto('inyeccion_capital');
+              setMovMonto(String(faltante));
+              setMovDesc('Plata para tapar el faltante arrastrado');
+              setError(null);
+              setModal('movimiento');
+            }}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+          >
+            <PiggyBank size={17} /> Meter {formatCOP(faltante)} y cuadrar la caja
+          </button>
+        </div>
+      )}
 
       {/* ─── Sin abrir: llamada a abrir ─────────────────────── */}
       {data.estado === 'sin_abrir' && (
         <div className="card" style={{ padding: 16, textAlign: 'center' }}>
           <Unlock size={26} color="var(--brand-500)" />
           <h2 style={{ margin: '8px 0 4px', fontSize: 15, fontWeight: 800 }}>
-            {(data.baseSugerida?.base ?? 0) > 0
+            {(data.baseSugerida?.base ?? 0) !== 0
               ? `Arrancas con ${formatCOP(data.baseSugerida!.base)}`
               : 'Aún no abres la caja'}
           </h2>
           <p style={{ margin: '0 0 12px', fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            {data.baseSugerida && data.baseSugerida.base > 0 ? (
+            {data.baseSugerida && data.baseSugerida.base !== 0 ? (
               <>
                 Es lo que te quedó del día anterior ({data.baseSugerida.origen.toLowerCase()}).
-                La caja se abre sola con ese valor en cuanto registres el primer cobro o préstamo;
-                solo toca el botón si quieres arrancar con otra cantidad.
+                {data.baseSugerida.base < 0
+                  ? ' Viene en rojo: ese faltante sigue vivo hasta que metas plata que lo tape.'
+                  : ''}
+                {" "}La caja se abre sola con ese valor en cuanto registres el primer cobro o
+                préstamo; solo toca el botón si quieres arrancar con otra cantidad.
               </>
             ) : (
               'Registra con cuánto efectivo arrancas el día.'
@@ -283,7 +333,7 @@ export default function CajaPage() {
             className="btn-secondary"
             onClick={() => { setBase(String(data.baseSugerida?.base ?? 0)); setError(null); setModal('abrir'); }}
           >
-            {(data.baseSugerida?.base ?? 0) > 0 ? 'Abrir con otra base' : 'Abrir el día'}
+            {(data.baseSugerida?.base ?? 0) !== 0 ? 'Abrir con otra base' : 'Abrir el día'}
           </button>
         </div>
       )}
@@ -422,7 +472,7 @@ export default function CajaPage() {
       {abierta && (
         <button
           className="btn-primary"
-          onClick={() => { setContado(String(data.saldoEsperado)); setError(null); setModal('cerrar'); }}
+          onClick={() => { setContado(String(Math.max(0, data.saldoEsperado))); setError(null); setModal('cerrar'); }}
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
         >
           <Lock size={17} /> Cerrar el día
@@ -480,7 +530,10 @@ export default function CajaPage() {
       {modal === 'abrir' && (
         <Modal titulo="Abrir la caja del día" onClose={() => setModal(null)}>
           <label className="input-label">¿Con cuánto efectivo arrancas?</label>
-          <InputDinero valor={base} onChange={setBase} autoFocus />
+          <InputDinero valor={base} onChange={setBase} autoFocus permitirNegativo />
+          <p style={{ margin: '6px 0 0', fontSize: 11.5, color: 'var(--text-muted)' }}>
+            Si vienes en rojo del día anterior puedes escribir el número con un menos adelante.
+          </p>
           {data.baseSugerida && (
             <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
               Sugerido: {formatCOP(data.baseSugerida.base)} — {data.baseSugerida.origen}

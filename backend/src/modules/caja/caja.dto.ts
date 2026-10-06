@@ -4,7 +4,9 @@ import { CONCEPTOS_EGRESO, CONCEPTOS_INGRESO } from '../../models/MovimientoCaja
 const fechaKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (YYYY-MM-DD)');
 
 export const AbrirCajaDto = z.object({
-  baseInicial: z.number().min(0, 'La base no puede ser negativa'),
+  // Puede ser negativa: arrastra el faltante de un día en que se prestó más
+  // efectivo del que había en mano.
+  baseInicial: z.number(),
   fechaKey: fechaKey.optional(),
   observaciones: z.string().max(1000).optional(),
 });

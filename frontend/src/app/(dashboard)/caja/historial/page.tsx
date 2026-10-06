@@ -29,6 +29,7 @@ interface Cierre {
   otrosEgresos: number;
   saldoEsperado: number;
   saldoContado: number | null;
+  cierreAutomatico?: boolean;
   diferencia: number;
   observaciones?: string;
   cobrador?: { _id: string; nombre: string };
@@ -128,6 +129,7 @@ export default function HistorialCajaPage() {
                   {/* Siempre se dice de quién es la caja: los tres roles ven lo mismo */}
                   {c.cobrador?.nombre ?? 'Sin asignar'}
                   {c.estado === 'abierto' ? ' · sin cerrar' : ''}
+                  {c.cierreAutomatico ? ' · cerró el sistema 11:59 p.m.' : ''}
                   {' · recogió '}{formatCOP(c.totalCobrado)}
                 </p>
               </div>

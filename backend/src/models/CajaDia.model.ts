@@ -16,6 +16,13 @@ export interface ICajaDia extends Document {
   cobrador: Types.ObjectId;   // quién la abrió (histórico; la caja es del negocio)
 
   baseInicial: number;       // efectivo con el que arrancó el día
+  /**
+   * true cuando la base la calculó el sistema al abrir el día solo. Esas se
+   * recalculan en vivo, así que si después se corrige un día anterior (por
+   * ejemplo metiendo plata para tapar un faltante) la cadena se arregla sola.
+   * Si una persona escribió la base, se respeta tal cual.
+   */
+  baseAutomatica: boolean;
 
   // Snapshot de movimientos del día (se congela al cerrar)
   totalCobrado: number;      // cobros recibidos
@@ -32,6 +39,12 @@ export interface ICajaDia extends Document {
   diferencia: number;        // contado - esperado (negativo = faltante)
 
   estado: 'abierto' | 'cerrado';
+  /**
+   * true cuando el día lo cerró el reloj a las 11:59 p.m. y no una persona.
+   * En esos cierres `saldoContado` queda vacío: nadie contó el efectivo, así
+   * que no hay con qué comparar y la diferencia no significa nada.
+   */
+  cierreAutomatico: boolean;
   observaciones?: string;
 
   abiertoPor: Types.ObjectId;
@@ -56,6 +69,7 @@ const CajaDiaSchema = new Schema<ICajaDia>(
     // Puede ser negativa: si un día se prestó más de lo que había en mano, el
     // día siguiente arranca en rojo. Taparlo con un cero esconde el descuadre.
     baseInicial: { type: Number, required: true },
+    baseAutomatica: { type: Boolean, default: false },
 
     totalCobrado: { type: Number, default: 0 },
     totalPrestado: { type: Number, default: 0 },
@@ -75,6 +89,7 @@ const CajaDiaSchema = new Schema<ICajaDia>(
       enum: ['abierto', 'cerrado'],
       default: 'abierto',
     },
+    cierreAutomatico: { type: Boolean, default: false },
     observaciones: { type: String, maxlength: [1000, 'Máximo 1000 caracteres'] },
 
     abiertoPor: { type: Schema.Types.ObjectId, ref: 'Usuario', required: true },
