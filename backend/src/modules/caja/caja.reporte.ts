@@ -143,7 +143,7 @@ export function construirCierreDiarioPDF(d: DatosDia): Promise<Buffer> {
   doc.rect(0, 0, 595.28, 88).fill(MARCA);
   doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(19).text('Cierre del día', MARGEN, 24);
   doc.font('Helvetica').fontSize(11).text(fechaLegible, MARGEN, 50);
-  doc.fontSize(9).text(`Cobrador: ${cobrador}`, MARGEN, 67);
+  doc.fontSize(9).text(`Abrió la caja: ${cobrador}`, MARGEN, 67);
   doc.fontSize(9).fillColor('#e0e7ff')
     .text(`Caja ${etiquetaEstado}`, MARGEN, 50, { width: ANCHO, align: 'right' });
   doc.fillColor(TINTA);

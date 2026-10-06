@@ -1,7 +1,9 @@
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
 /**
- * Cierre de caja diario por cobrador.
+ * Cierre de caja diario del negocio. Hay UNA caja por día, no una por
+ * cobrador: el efectivo que se presta sale del mismo bolsillo donde entran
+ * los cobros. `cobrador` queda solo como referencia de quién la abrió.
  *
  * El cobrador abre el día con una base (que arrastra del cierre anterior),
  * trabaja, y al final cuenta el efectivo y cierra. Los totales se guardan
@@ -11,7 +13,7 @@ import mongoose, { Document, Schema, Types } from 'mongoose';
 export interface ICajaDia extends Document {
   fechaKey: string;          // 'YYYY-MM-DD' en calendario de Bogotá
   fecha: Date;               // instante UTC de la medianoche de ese día
-  cobrador: Types.ObjectId;
+  cobrador: Types.ObjectId;   // quién la abrió (histórico; la caja es del negocio)
 
   baseInicial: number;       // efectivo con el que arrancó el día
 
@@ -81,8 +83,8 @@ const CajaDiaSchema = new Schema<ICajaDia>(
   { timestamps: true, toJSON: { virtuals: true } }
 );
 
-// Un solo cierre por cobrador y día
-CajaDiaSchema.index({ cobrador: 1, fechaKey: 1 }, { unique: true });
+// Un solo cierre por día para todo el negocio
+CajaDiaSchema.index({ fechaKey: 1 }, { unique: true });
 CajaDiaSchema.index({ fechaKey: -1 });
 CajaDiaSchema.index({ estado: 1 });
 

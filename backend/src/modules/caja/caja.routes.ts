@@ -3,7 +3,7 @@ import { cajaService } from './caja.service';
 import { authMiddleware, adminOnly, auditorOnly } from '../../shared/middleware/auth.middleware';
 import { auditMiddleware } from '../../shared/middleware/audit.middleware';
 import { ResponseHelper } from '../../shared/utils/responses';
-import { ForbiddenError, AppError } from '../../shared/middleware/error.middleware';
+import { AppError } from '../../shared/middleware/error.middleware';
 import { keyDia } from '../../shared/utils/fechas';
 import {
   AbrirCajaDto, CerrarCajaDto, CrearMovimientoDto, FiltrosCierresDto,
@@ -13,25 +13,17 @@ const router = Router();
 router.use(authMiddleware);
 
 /**
- * Cada cobrador opera su propia caja. El admin puede mirar (y operar) la de
- * cualquiera pasando `?cobradorId=`; un cobrador que lo intente recibe 403.
+ * Hay UNA sola caja para todo el negocio: un día, un saldo. Las tres cuentas
+ * ven y operan la misma, porque el efectivo es el mismo bolsillo. Antes la
+ * caja estaba partida por cobrador y las renovaciones registradas a nombre de
+ * otra cuenta no descontaban del saldo que el dueño miraba.
  */
-function resolverCobrador(req: Request): string {
-  const solicitado = (req.query['cobradorId'] ?? req.body?.cobradorId) as string | undefined;
-  if (!solicitado) return req.user!.sub;
-  const mandaEnTodo = req.user!.rol === 'admin' || req.user!.rol === 'auditor';
-  if (!mandaEnTodo && solicitado !== req.user!.sub) {
-    throw new ForbiddenError('Solo puedes operar tu propia caja');
-  }
-  return solicitado;
-}
 
 // ─── Estado del día ───────────────────────────────────────────
 router.get('/estado', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const cobradorId = resolverCobrador(req);
     const fecha = req.query['fecha'] as string | undefined;
-    const data = await cajaService.estadoDia(cobradorId, fecha);
+    const data = await cajaService.estadoDia(fecha);
     ResponseHelper.success(res, data);
   } catch (error) { next(error); }
 });
@@ -39,9 +31,8 @@ router.get('/estado', async (req: Request, res: Response, next: NextFunction) =>
 // ─── Detalle de movimientos del día ───────────────────────────
 router.get('/detalle', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const cobradorId = resolverCobrador(req);
     const fechaKey = (req.query['fecha'] as string) ?? keyDia();
-    const data = await cajaService.detalleDia(fechaKey, cobradorId);
+    const data = await cajaService.detalleDia(fechaKey);
     ResponseHelper.success(res, data);
   } catch (error) { next(error); }
 });
@@ -49,9 +40,8 @@ router.get('/detalle', async (req: Request, res: Response, next: NextFunction) =
 // ─── Cierre del día en PDF ────────────────────────────────────
 router.get('/dia.pdf', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const cobradorId = resolverCobrador(req);
     const fechaKey = (req.query['fecha'] as string) ?? keyDia();
-    const datos = await cajaService.detalleDia(fechaKey, cobradorId);
+    const datos = await cajaService.detalleDia(fechaKey);
 
     // Import dinámico: PDFKit sólo hace falta cuando piden el papel
     const { construirCierreDiarioPDF } = await import('./caja.reporte');
@@ -70,9 +60,8 @@ router.post(
   auditMiddleware({ accion: 'ABRIR_CAJA', recurso: 'CajaDia' }),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const cobradorId = resolverCobrador(req);
       const dto = AbrirCajaDto.parse(req.body);
-      const caja = await cajaService.abrir(dto, cobradorId);
+      const caja = await cajaService.abrir(dto, req.user!.sub);
       ResponseHelper.created(res, caja, 'Caja abierta correctamente');
     } catch (error) { next(error); }
   }
@@ -84,9 +73,8 @@ router.post(
   auditMiddleware({ accion: 'CERRAR_CAJA', recurso: 'CajaDia' }),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const cobradorId = resolverCobrador(req);
       const dto = CerrarCajaDto.parse(req.body);
-      const caja = await cajaService.cerrar(dto, cobradorId, req.user!.sub);
+      const caja = await cajaService.cerrar(dto, req.user!.sub);
       ResponseHelper.success(res, caja, 'Día cerrado correctamente');
     } catch (error) { next(error); }
   }
@@ -111,9 +99,7 @@ router.post(
 router.get('/cierres', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const filtros = FiltrosCierresDto.parse(req.query);
-    // Un cobrador solo ve sus propios cierres
-    // El cobrador solo ve los suyos; admin y auditor ven los de todos
-    if (req.user!.rol === 'cobrador') filtros.cobradorId = req.user!.sub;
+    // Los cierres son del negocio: las tres cuentas ven los mismos
     const { data, pagination } = await cajaService.listarCierres(filtros);
     ResponseHelper.paginated(res, data, pagination);
   } catch (error) { next(error); }
@@ -122,9 +108,8 @@ router.get('/cierres', async (req: Request, res: Response, next: NextFunction) =
 // ─── Movimientos manuales ─────────────────────────────────────
 router.get('/movimientos', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const cobradorId = resolverCobrador(req);
     const fechaKey = (req.query['fecha'] as string) ?? keyDia();
-    const data = await cajaService.listarMovimientos(fechaKey, cobradorId);
+    const data = await cajaService.listarMovimientos(fechaKey);
     ResponseHelper.success(res, data);
   } catch (error) { next(error); }
 });
@@ -134,9 +119,8 @@ router.post(
   auditMiddleware({ accion: 'CREATE_MOVIMIENTO_CAJA', recurso: 'MovimientoCaja' }),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const cobradorId = resolverCobrador(req);
       const dto = CrearMovimientoDto.parse(req.body);
-      const mov = await cajaService.crearMovimiento(dto, cobradorId, req.user!.sub);
+      const mov = await cajaService.crearMovimiento(dto, req.user!.sub);
       ResponseHelper.created(res, mov, 'Movimiento registrado');
     } catch (error) { next(error); }
   }

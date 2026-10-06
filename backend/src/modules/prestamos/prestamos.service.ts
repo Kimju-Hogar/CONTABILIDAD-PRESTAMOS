@@ -297,8 +297,10 @@ export class PrestamosService {
       createdBy: usuarioId,
     });
 
-    // Una renovación también mueve caja: sale la plata nueva, o entran los cargos
-    await cajaService.asegurarCajaAbierta(String(original.cobrador));
+    // Una renovación también mueve caja: sale la plata nueva, o entran los cargos.
+    // Se abre con el usuario que la registra, no con el cobrador del préstamo
+    // viejo: la caja es una sola para todo el negocio.
+    await cajaService.asegurarCajaAbierta(usuarioId);
 
     return nuevoPrestamo;
   }

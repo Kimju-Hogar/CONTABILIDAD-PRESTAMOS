@@ -23,7 +23,8 @@
     "crear:auditor": "tsx scripts/crear-auditor.ts",
     "rotar:mongo": "tsx scripts/rotar-mongo.ts",
     "corregir:renovacion": "tsx scripts/corregir-renovacion.ts",
-    "recalcular:cuotas": "tsx scripts/recalcular-cuotas.ts"
+    "recalcular:cuotas": "tsx scripts/recalcular-cuotas.ts",
+    "unificar:caja": "tsx scripts/unificar-caja.ts"
   },
   "dependencies": {
     "@types/bcryptjs": "^2.4.6",

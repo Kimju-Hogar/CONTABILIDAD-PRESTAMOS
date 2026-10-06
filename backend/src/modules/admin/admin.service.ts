@@ -365,20 +365,11 @@ export class AdminService {
           },
         },
       ]),
-      // Efectivo: el último cierre de cada cobrador, más lo que lleve el día abierto
-      CajaDiaModel.aggregate([
-        { $sort: { fechaKey: -1 } },
-        {
-          $group: {
-            _id: '$cobrador',
-            estado: { $first: '$estado' },
-            fechaKey: { $first: '$fechaKey' },
-            baseInicial: { $first: '$baseInicial' },
-            saldoContado: { $first: '$saldoContado' },
-            saldoEsperado: { $first: '$saldoEsperado' },
-          },
-        },
-      ]),
+      // Efectivo: la caja del negocio es una sola, así que basta su último día
+      CajaDiaModel.find({})
+        .sort({ fechaKey: -1 })
+        .limit(1)
+        .lean(),
     ]);
 
     const c = cartera[0];
@@ -386,13 +377,14 @@ export class AdminService {
     const capitalPendiente = c?.capitalPendiente ?? 0;
 
     let efectivo = 0;
-    for (const caja of cajas) {
-      if (caja.estado === 'cerrado') {
-        efectivo += caja.saldoContado ?? caja.saldoEsperado ?? 0;
+    const ultimaCaja = cajas[0];
+    if (ultimaCaja) {
+      if (ultimaCaja.estado === 'cerrado') {
+        efectivo = ultimaCaja.saldoContado ?? ultimaCaja.saldoEsperado ?? 0;
       } else {
-        const t = await cajaService.calcularTotalesDia(caja.fechaKey, String(caja._id));
-        efectivo +=
-          (caja.baseInicial ?? 0) + t.totalCobrado + t.otrosIngresos
+        const t = await cajaService.calcularTotalesDia(ultimaCaja.fechaKey);
+        efectivo =
+          (ultimaCaja.baseInicial ?? 0) + t.totalCobrado + t.cargosCobrados + t.otrosIngresos
           - t.totalPrestado - t.totalGastos - t.otrosEgresos;
       }
     }
@@ -419,7 +411,7 @@ export class AdminService {
       this.egresosPeriodo(rango, cobradorId),
       this.cartera(cobradorId),
       this.cuentaPapeleria(cobradorId),
-      this.resumenCaja(rango, cobradorId),
+      this.resumenCaja(rango),
       this.patrimonio(cobradorId),
       this.capitalInvertido(rango),
     ]);
@@ -498,12 +490,11 @@ export class AdminService {
   }
 
   /** Cierres del periodo: cuánto efectivo quedó y si hubo descuadres. */
-  private async resumenCaja(rango: Rango, cobradorId?: string) {
+  private async resumenCaja(rango: Rango) {
     const desdeKey = new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(rango.inicio);
     const hastaKey = new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(rango.fin);
 
     const match: Record<string, unknown> = { fechaKey: { $gte: desdeKey, $lte: hastaKey } };
-    if (cobradorId) match.cobrador = oid(cobradorId);
 
     const [agg, ultimo] = await Promise.all([
       CajaDiaModel.aggregate([
@@ -518,7 +509,7 @@ export class AdminService {
           },
         },
       ]),
-      CajaDiaModel.findOne(cobradorId ? { cobrador: oid(cobradorId) } : {})
+      CajaDiaModel.findOne({})
         .sort({ fechaKey: -1 })
         .populate('cobrador', 'nombre')
         .lean(),

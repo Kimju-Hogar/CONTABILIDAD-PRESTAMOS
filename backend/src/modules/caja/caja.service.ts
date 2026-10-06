@@ -11,7 +11,15 @@ import { keyDia, rangoDeKey, inicioDeKey } from '../../shared/utils/fechas';
 import { getSocketIO } from '../../config/socket';
 import type { AbrirCajaDto, CerrarCajaDto, CrearMovimientoDto, FiltrosCierresDto } from './caja.dto';
 
-/** Totales de un día calculados en vivo desde las colecciones operativas. */
+/**
+ * Totales de un día calculados en vivo desde las colecciones operativas.
+ *
+ * REGLA DEL NEGOCIO: hay **una sola caja**. La plata que se presta sale del
+ * mismo bolsillo donde entran los cobros, sin importar qué cuenta registró el
+ * movimiento. Por eso aquí no se filtra por cobrador: si se filtrara, una
+ * renovación registrada a nombre de otra cuenta no descontaría de la caja que
+ * el dueño mira (fue exactamente el bug de octubre de 2026).
+ */
 export interface TotalesDia {
   totalCobrado: number;
   cantidadCobros: number;
@@ -40,20 +48,18 @@ export class CajaService {
    * Los préstamos se imputan por `fechaInicio` (el día en que el efectivo salió
    * hacia el cliente), no por su fecha de creación en el sistema.
    */
-  async calcularTotalesDia(fechaKey: string, cobradorId: string): Promise<TotalesDia> {
+  async calcularTotalesDia(fechaKey: string): Promise<TotalesDia> {
     const { inicio, fin } = rangoDeKey(fechaKey);
-    const cobrador = oid(cobradorId);
 
     const [cobros, prestamos, gastos, movimientos] = await Promise.all([
       CobroModel.aggregate([
-        { $match: { fecha: { $gte: inicio, $lte: fin }, anulado: false, cobrador } },
+        { $match: { fecha: { $gte: inicio, $lte: fin }, anulado: false } },
         { $group: { _id: null, total: { $sum: '$monto' }, cantidad: { $sum: 1 } } },
       ]),
       PrestamoModel.aggregate([
         {
           $match: {
             fechaInicio: { $gte: inicio, $lte: fin },
-            cobrador,
             deletedAt: null,
             estado: { $ne: 'cancelado' },
           },
@@ -78,11 +84,11 @@ export class CajaService {
         },
       ]),
       GastoModel.aggregate([
-        { $match: { fecha: { $gte: inicio, $lte: fin }, usuario: cobrador, deletedAt: null } },
+        { $match: { fecha: { $gte: inicio, $lte: fin }, deletedAt: null } },
         { $group: { _id: null, total: { $sum: '$monto' } } },
       ]),
       MovimientoCajaModel.aggregate([
-        { $match: { fechaKey, cobrador, deletedAt: null } },
+        { $match: { fechaKey, deletedAt: null } },
         { $group: { _id: '$tipo', total: { $sum: '$monto' } } },
       ]),
     ]);
@@ -122,12 +128,11 @@ export class CajaService {
    * Base sugerida para abrir un día: el efectivo con que quedó el último cierre
    * de ese cobrador. Si nunca ha cerrado, cae al valor configurado.
    */
-  async baseSugerida(fechaKey: string, cobradorId: string): Promise<{ base: number; origen: string }> {
+  async baseSugerida(fechaKey: string): Promise<{ base: number; origen: string }> {
     // El último día que tuvo caja, esté cerrado o no. Si el cobrador olvidó
     // cerrar, igual se arrastra lo que le quedó: de otro modo el día nuevo
     // arrancaría en cero y habría que escribir la base a mano.
     const anterior = await CajaDiaModel.findOne({
-      cobrador: oid(cobradorId),
       fechaKey: { $lt: fechaKey },
     })
       .sort({ fechaKey: -1 })
@@ -139,7 +144,7 @@ export class CajaService {
         return { base: Math.max(0, base), origen: `Cierre del ${anterior.fechaKey}` };
       }
       // Quedó abierto: se calcula con qué terminó ese día
-      const t = await this.calcularTotalesDia(anterior.fechaKey, cobradorId);
+      const t = await this.calcularTotalesDia(anterior.fechaKey);
       const base = this.saldoEsperado(anterior.baseInicial, t);
       return {
         base: Math.max(0, base),
@@ -159,29 +164,29 @@ export class CajaService {
    * le quedó del día anterior. Así nunca hay movimientos huérfanos y el saldo
    * encadena solo de un día al siguiente.
    */
-  async asegurarCajaAbierta(cobradorId: string, fecha?: string): Promise<ICajaDia> {
+  async asegurarCajaAbierta(usuarioId: string, fecha?: string): Promise<ICajaDia> {
     const fechaKey = fecha ?? keyDia();
 
-    const existente = await CajaDiaModel.findOne({ cobrador: oid(cobradorId), fechaKey });
+    const existente = await CajaDiaModel.findOne({ fechaKey });
     if (existente) return existente;
 
-    const { base } = await this.baseSugerida(fechaKey, cobradorId);
+    const { base } = await this.baseSugerida(fechaKey);
 
     try {
       return await CajaDiaModel.create({
         fechaKey,
         fecha: inicioDeKey(fechaKey),
-        cobrador: cobradorId,
+        cobrador: usuarioId,
         baseInicial: base,
         estado: 'abierto',
         observaciones: 'Apertura automática: arrastre del día anterior',
-        abiertoPor: cobradorId,
+        abiertoPor: usuarioId,
         abiertoEn: new Date(),
       });
     } catch (e) {
       // Dos movimientos a la vez pueden chocar contra el índice único;
       // si otro ya la creó, se usa esa.
-      const yaCreada = await CajaDiaModel.findOne({ cobrador: oid(cobradorId), fechaKey });
+      const yaCreada = await CajaDiaModel.findOne({ fechaKey });
       if (yaCreada) return yaCreada;
       throw e;
     }
@@ -192,15 +197,15 @@ export class CajaService {
    * Foto completa del día para el cobrador: la caja (si ya se abrió), los
    * totales en vivo, el saldo esperado y la base sugerida si aún no abre.
    */
-  async estadoDia(cobradorId: string, fecha?: string) {
+  async estadoDia(fecha?: string) {
     const fechaKey = fecha ?? keyDia();
-    const caja = await CajaDiaModel.findOne({ cobrador: oid(cobradorId), fechaKey })
+    const caja = await CajaDiaModel.findOne({ fechaKey })
       .populate('cobrador', 'nombre email')
       .populate('cerradoPor', 'nombre')
       .lean();
 
-    const totales = await this.calcularTotalesDia(fechaKey, cobradorId);
-    const movimientos = await MovimientoCajaModel.find({ fechaKey, cobrador: oid(cobradorId) })
+    const totales = await this.calcularTotalesDia(fechaKey);
+    const movimientos = await MovimientoCajaModel.find({ fechaKey })
       .populate('registradoPor', 'nombre')
       .sort({ createdAt: -1 })
       .lean();
@@ -247,7 +252,7 @@ export class CajaService {
       };
     }
 
-    const sugerida = await this.baseSugerida(fechaKey, cobradorId);
+    const sugerida = await this.baseSugerida(fechaKey);
     return {
       fechaKey,
       estado: 'sin_abrir' as const,
@@ -265,10 +270,10 @@ export class CajaService {
   }
 
   // ─── Abrir ──────────────────────────────────────────────────
-  async abrir(dto: AbrirCajaDto, cobradorId: string): Promise<ICajaDia> {
+  async abrir(dto: AbrirCajaDto, usuarioId: string): Promise<ICajaDia> {
     const fechaKey = dto.fechaKey ?? keyDia();
 
-    const existente = await CajaDiaModel.findOne({ cobrador: oid(cobradorId), fechaKey });
+    const existente = await CajaDiaModel.findOne({ fechaKey });
     if (existente) {
       throw new AppError(
         existente.estado === 'cerrado'
@@ -281,22 +286,22 @@ export class CajaService {
     const caja = await CajaDiaModel.create({
       fechaKey,
       fecha: inicioDeKey(fechaKey),
-      cobrador: cobradorId,
+      cobrador: usuarioId,
       baseInicial: dto.baseInicial,
       estado: 'abierto',
       observaciones: dto.observaciones,
-      abiertoPor: cobradorId,
+      abiertoPor: usuarioId,
       abiertoEn: new Date(),
     });
 
-    getSocketIO()?.to('dashboard').emit('caja:abierta', { fechaKey, cobradorId, base: dto.baseInicial });
+    getSocketIO()?.to('dashboard').emit('caja:abierta', { fechaKey, base: dto.baseInicial });
     return caja;
   }
 
   // ─── Cerrar ─────────────────────────────────────────────────
-  async cerrar(dto: CerrarCajaDto, cobradorId: string, usuarioId: string): Promise<ICajaDia> {
+  async cerrar(dto: CerrarCajaDto, usuarioId: string): Promise<ICajaDia> {
     const fechaKey = dto.fechaKey ?? keyDia();
-    const caja = await CajaDiaModel.findOne({ cobrador: oid(cobradorId), fechaKey });
+    const caja = await CajaDiaModel.findOne({ fechaKey });
 
     if (!caja) {
       throw new AppError(`No hay una caja abierta para el ${fechaKey}`, 400);
@@ -305,7 +310,7 @@ export class CajaService {
       throw new AppError(`La caja del ${fechaKey} ya fue cerrada`, 400);
     }
 
-    const totales = await this.calcularTotalesDia(fechaKey, cobradorId);
+    const totales = await this.calcularTotalesDia(fechaKey);
     const esperado = this.saldoEsperado(caja.baseInicial, totales);
 
     caja.totalCobrado = totales.totalCobrado;
@@ -328,7 +333,6 @@ export class CajaService {
 
     getSocketIO()?.to('dashboard').emit('caja:cerrada', {
       fechaKey,
-      cobradorId,
       saldoContado: caja.saldoContado,
       diferencia: caja.diferencia,
     });
@@ -355,7 +359,6 @@ export class CajaService {
   // ─── Histórico de cierres ───────────────────────────────────
   async listarCierres(filtros: FiltrosCierresDto) {
     const query: Record<string, unknown> = {};
-    if (filtros.cobradorId) query.cobrador = oid(filtros.cobradorId);
     if (filtros.estado) query.estado = filtros.estado;
     if (filtros.desde || filtros.hasta) {
       const f: Record<string, string> = {};
@@ -383,9 +386,7 @@ export class CajaService {
     const data = await Promise.all(
       filas.map(async (fila) => {
         if (fila.estado === 'cerrado') return fila;
-        // `cobrador` viene poblado, así que puede ser el documento o el id suelto
-        const cobradorId = (fila.cobrador as { _id?: unknown })?._id ?? fila.cobrador;
-        const t = await this.calcularTotalesDia(fila.fechaKey, String(cobradorId));
+        const t = await this.calcularTotalesDia(fila.fechaKey);
         return {
           ...fila,
           totalCobrado: t.totalCobrado,
@@ -405,10 +406,10 @@ export class CajaService {
   }
 
   // ─── Movimientos manuales ───────────────────────────────────
-  async crearMovimiento(dto: CrearMovimientoDto, cobradorId: string, usuarioId: string) {
+  async crearMovimiento(dto: CrearMovimientoDto, usuarioId: string) {
     const fechaKey = dto.fechaKey ?? keyDia();
 
-    const caja = await CajaDiaModel.findOne({ cobrador: oid(cobradorId), fechaKey }).lean();
+    const caja = await CajaDiaModel.findOne({ fechaKey }).lean();
     if (caja?.estado === 'cerrado') {
       throw new AppError(
         `El día ${fechaKey} ya está cerrado. Pide al administrador que lo reabra para corregirlo.`,
@@ -419,7 +420,7 @@ export class CajaService {
     const movimiento = await MovimientoCajaModel.create({
       fechaKey,
       fecha: new Date(),
-      cobrador: cobradorId,
+      cobrador: usuarioId,
       tipo: dto.tipo,
       concepto: dto.concepto,
       monto: dto.monto,
@@ -429,7 +430,7 @@ export class CajaService {
       registradoPor: usuarioId,
     });
 
-    getSocketIO()?.to('dashboard').emit('caja:movimiento', { fechaKey, cobradorId });
+    getSocketIO()?.to('dashboard').emit('caja:movimiento', { fechaKey });
     return movimiento;
   }
 
@@ -437,10 +438,7 @@ export class CajaService {
     const movimiento = await MovimientoCajaModel.findById(id);
     if (!movimiento) throw new NotFoundError('Movimiento');
 
-    const caja = await CajaDiaModel.findOne({
-      cobrador: movimiento.cobrador,
-      fechaKey: movimiento.fechaKey,
-    }).lean();
+    const caja = await CajaDiaModel.findOne({ fechaKey: movimiento.fechaKey }).lean();
     if (caja?.estado === 'cerrado') {
       throw new AppError('No se puede borrar un movimiento de un día ya cerrado', 400);
     }
@@ -449,10 +447,8 @@ export class CajaService {
     await movimiento.save();
   }
 
-  async listarMovimientos(fechaKey: string, cobradorId?: string) {
-    const query: Record<string, unknown> = { fechaKey };
-    if (cobradorId) query.cobrador = oid(cobradorId);
-    return MovimientoCajaModel.find(query)
+  async listarMovimientos(fechaKey: string) {
+    return MovimientoCajaModel.find({ fechaKey })
       .populate('registradoPor', 'nombre')
       .populate('cliente', 'nombre')
       .sort({ createdAt: -1 })
@@ -464,33 +460,35 @@ export class CajaService {
    * El día completo, línea por línea: la caja, cada cobro, cada préstamo, cada
    * gasto y cada movimiento manual. Es lo que alimenta el reporte diario.
    */
-  async detalleDia(fechaKey: string, cobradorId: string) {
+  async detalleDia(fechaKey: string) {
     const { inicio, fin } = rangoDeKey(fechaKey);
-    const cobrador = oid(cobradorId);
 
     const [cobros, prestamos, gastos, movimientos, caja, totales] = await Promise.all([
-      CobroModel.find({ fecha: { $gte: inicio, $lte: fin }, anulado: false, cobrador })
+      CobroModel.find({ fecha: { $gte: inicio, $lte: fin }, anulado: false })
         .populate('cliente', 'nombre cedula celular')
         .populate('prestamo', 'cuotaDiaria saldoPendiente totalPagar')
+        .populate('cobrador', 'nombre')
         .sort({ fecha: 1 })
         .lean(),
       PrestamoModel.find({
         fechaInicio: { $gte: inicio, $lte: fin },
-        cobrador,
         deletedAt: null,
         estado: { $ne: 'cancelado' },
       })
         .populate('cliente', 'nombre cedula')
+        .populate('cobrador', 'nombre')
         .sort({ createdAt: 1 })
         .lean(),
-      GastoModel.find({ fecha: { $gte: inicio, $lte: fin }, usuario: cobrador, deletedAt: null })
+      GastoModel.find({ fecha: { $gte: inicio, $lte: fin }, deletedAt: null })
         .sort({ fecha: 1 })
         .lean(),
-      this.listarMovimientos(fechaKey, cobradorId),
-      CajaDiaModel.findOne({ cobrador, fechaKey })
+      this.listarMovimientos(fechaKey),
+      CajaDiaModel.findOne({ fechaKey })
         .populate('cobrador', 'nombre email')
+        .populate('abiertoPor', 'nombre')
+        .populate('cerradoPor', 'nombre')
         .lean(),
-      this.calcularTotalesDia(fechaKey, cobradorId),
+      this.calcularTotalesDia(fechaKey),
     ]);
 
     // Un cierre guardado manda sobre el cálculo en vivo
@@ -502,6 +500,24 @@ export class CajaService {
     // Cuántos clientes de la ruta pagaron y cuántos no aparecieron
     const clientesQuePagaron = new Set(cobros.map((c) => String(c.cliente?._id ?? c.cliente))).size;
 
+    // La caja es una sola, pero sigue importando quién movió qué: esto deja
+    // ver en el cierre cuánto recogió y cuánto prestó cada cuenta.
+    const porPersona = new Map<string, { nombre: string; cobrado: number; prestado: number; cobros: number; prestamos: number }>();
+    const fila = (u: unknown) => {
+      const doc = u as { _id?: unknown; nombre?: string } | null;
+      const id = String(doc?._id ?? u ?? 'sin-dueño');
+      if (!porPersona.has(id)) {
+        porPersona.set(id, { nombre: doc?.nombre ?? 'Sin asignar', cobrado: 0, prestado: 0, cobros: 0, prestamos: 0 });
+      }
+      return porPersona.get(id)!;
+    };
+    for (const c of cobros) { const r = fila(c.cobrador); r.cobrado += c.monto; r.cobros += 1; }
+    for (const p of prestamos) {
+      const r = fila(p.cobrador);
+      r.prestado += Math.max(0, p.montoDesembolsado ?? 0);
+      r.prestamos += 1;
+    }
+
     return {
       fechaKey,
       caja,
@@ -512,6 +528,7 @@ export class CajaService {
       saldoContado: caja?.saldoContado ?? null,
       diferencia: caja?.diferencia ?? 0,
       clientesQuePagaron,
+      porPersona: [...porPersona.values()].sort((a, b) => b.cobrado - a.cobrado),
       cobros,
       prestamos,
       gastos,
