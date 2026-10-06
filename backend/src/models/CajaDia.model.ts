@@ -53,7 +53,9 @@ const CajaDiaSchema = new Schema<ICajaDia>(
     fecha: { type: Date, required: true },
     cobrador: { type: Schema.Types.ObjectId, ref: 'Usuario', required: true },
 
-    baseInicial: { type: Number, required: true, min: [0, 'La base no puede ser negativa'] },
+    // Puede ser negativa: si un día se prestó más de lo que había en mano, el
+    // día siguiente arranca en rojo. Taparlo con un cero esconde el descuadre.
+    baseInicial: { type: Number, required: true },
 
     totalCobrado: { type: Number, default: 0 },
     totalPrestado: { type: Number, default: 0 },
