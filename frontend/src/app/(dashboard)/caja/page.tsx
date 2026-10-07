@@ -30,6 +30,8 @@ interface EstadoCaja {
   saldoContado: number | null;
   diferencia: number;
   baseSugerida: { base: number; origen: string } | null;
+  /** Cuenta de papelería y cartones del periodo: lo acumulado y lo ya retirado. */
+  papeleria: { generado: number; retirado: number; disponible: number };
   movimientos: Movimiento[];
   caja: { observaciones?: string; cerradoEn?: string; cierreAutomatico?: boolean } | null;
   totales: {
@@ -218,6 +220,7 @@ export default function CajaPage() {
   // Ese faltante se arrastra al día siguiente hasta que entre plata que lo tape.
   const enRojo = !cerrada && data.saldoEsperado < 0;
   const cierreDelReloj = cerrada && !!data.caja?.cierreAutomatico;
+  const pap = data.papeleria ?? { generado: 0, retirado: 0, disponible: 0 };
   const faltante = Math.abs(Math.min(0, data.saldoEsperado));
 
   return (
@@ -373,16 +376,45 @@ export default function CajaPage() {
         <StatRow label="Queda en caja" valor={data.saldoEsperado} negrita />
       </SectionCard>
 
-      {/* ─── Papelería y cartones retenidos ─────────────────── */}
-      {(t.totalPapeleria > 0 || t.totalCartones > 0) && (
-        <SectionCard titulo="Se quedó en caja de papelería y cartones" icon={FileText}>
+      {/* ─── Cuenta de papelería y cartones ─────────────────── */}
+      {(pap.generado > 0 || t.totalPapeleria > 0 || t.totalCartones > 0) && (
+        <SectionCard titulo="Cuenta de papelería y cartones" icon={FileText}>
           <p style={{ margin: '0 0 6px', fontSize: 12, color: 'var(--text-muted)' }}>
-            Ya está descontado del desembolso, así que este efectivo está dentro del saldo de arriba.
+            Se retiene del desembolso, así que mientras no la retires este efectivo está
+            dentro del saldo de arriba. Cuando la retiras sale de la caja y queda como
+            plata tuya, fuera del sistema.
           </p>
-          <StatRow label="Papelería cobrada hoy" valor={t.totalPapeleria} />
-          <StatRow label="Renovación de cartones" valor={t.totalCartones} />
+          {(t.totalPapeleria > 0 || t.totalCartones > 0) && (
+            <>
+              <StatRow label="Papelería cobrada hoy" valor={t.totalPapeleria} />
+              <StatRow label="Renovación de cartones hoy" valor={t.totalCartones} />
+              <Sep />
+            </>
+          )}
+          <StatRow label="Acumulado del periodo" valor={pap.generado} />
+          <StatRow label="Ya retirado" valor={-pap.retirado} tono="negativo" />
           <Sep />
-          <StatRow label="Total del día" valor={t.totalPapeleria + t.totalCartones} negrita />
+          <StatRow label="Sin retirar (está en la caja)" valor={pap.disponible} negrita />
+
+          {!cerrada && pap.disponible > 0 && (
+            <button
+              className="btn-secondary"
+              onClick={() => {
+                setMovTipo('egreso');
+                setMovConcepto('retiro_papeleria');
+                setMovMonto(String(pap.disponible));
+                setMovDesc('Retiro de papelería');
+                setError(null);
+                setModal('movimiento');
+              }}
+              style={{
+                marginTop: 12, display: 'flex', alignItems: 'center',
+                justifyContent: 'center', gap: 8, width: '100%',
+              }}
+            >
+              <FileText size={16} /> Retirar {formatCOP(pap.disponible)} de papelería
+            </button>
+          )}
         </SectionCard>
       )}
 

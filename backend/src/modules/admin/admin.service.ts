@@ -228,10 +228,16 @@ export class AdminService {
   /**
    * Cuenta general de papelería y renovación de cartones: lo generado, lo que
    * ya se retiró y lo que sigue disponible en caja.
+   *
+   * Lo retirado se mide por los movimientos `retiro_papeleria` del libro de
+   * caja, que son los que de verdad sacan el efectivo. Antes se medía con una
+   * bandera por préstamo que ningún código llegaba a marcar, así que el dinero
+   * salía de la caja y la cuenta lo seguía mostrando disponible.
    */
   async cuentaPapeleria(cobradorId?: string) {
     const config = await obtenerConfiguracion();
     const corte = config.fechaCortePapeleria;
+    const corteKey = corte ? keyDia(corte) : null;
 
     const match: Record<string, unknown> = { deletedAt: null, estado: { $ne: 'cancelado' } };
     if (cobradorId) match.cobrador = oid(cobradorId);
@@ -246,44 +252,57 @@ export class AdminService {
           $group: {
             _id: null,
             papeleriaGenerada: { $sum: '$papeleria' },
-            papeleriaRetirada: {
-              $sum: { $cond: ['$papeleriaRetirada', '$papeleria', 0] },
-            },
             cartonesGenerados: { $sum: { $ifNull: ['$carton', 0] } },
             prestamos: { $sum: 1 },
           },
         },
       ]),
+      // Se parten en dos: los de este periodo descuentan de la cuenta; los
+      // anteriores al corte solo quedan como histórico.
       MovimientoCajaModel.aggregate([
         { $match: { concepto: 'retiro_papeleria', deletedAt: null } },
-        { $group: { _id: null, total: { $sum: '$monto' }, cantidad: { $sum: 1 } } },
+        {
+          $group: {
+            _id: corteKey ? { $gte: ['$fechaKey', corteKey] } : true,
+            total: { $sum: '$monto' },
+            cantidad: { $sum: 1 },
+          },
+        },
       ]),
     ]);
 
     const t = totales[0];
     const papeleriaGenerada = t?.papeleriaGenerada ?? 0;
     const cartonesGenerados = t?.cartonesGenerados ?? 0;
-    const papeleriaRetirada = t?.papeleriaRetirada ?? 0;
 
-    // El cartón no se retira: es ganancia del negocio desde que se cobra
+    const delPeriodo = retiros.find((r) => r._id === true);
+    const anteriores = retiros.find((r) => r._id === false);
+    const retirado = delPeriodo?.total ?? 0;
+
+    // La cuenta es un solo bote: papelería más cartones. El retiro sale de ahí,
+    // así que no se puede repartir entre los dos sin inventar. Lo que se informa
+    // por separado es lo generado; el retiro se mira contra el total.
     const generado = papeleriaGenerada + cartonesGenerados;
+    const retiradoDePapeleria = Math.min(retirado, papeleriaGenerada);
 
     return {
       papeleria: {
         generada: papeleriaGenerada,
-        retirada: papeleriaRetirada,
-        disponible: papeleriaGenerada - papeleriaRetirada,
+        retirada: retiradoDePapeleria,
+        disponible: papeleriaGenerada - retiradoDePapeleria,
       },
       cartones: {
         generados: cartonesGenerados,
       },
       total: {
         generado,
-        retirado: papeleriaRetirada,
-        disponible: generado - papeleriaRetirada,
+        retirado,
+        disponible: generado - retirado,
       },
       // Retiros de efectivo registrados contra esta cuenta en el libro de caja
-      retirosEnCaja: { total: retiros[0]?.total ?? 0, cantidad: retiros[0]?.cantidad ?? 0 },
+      retirosEnCaja: { total: retirado, cantidad: delPeriodo?.cantidad ?? 0 },
+      /** Lo que se retiró antes del corte: ya no pesa en la cuenta de hoy. */
+      retiradoAntesDelCorte: { total: anteriores?.total ?? 0, cantidad: anteriores?.cantidad ?? 0 },
       prestamosConsiderados: t?.prestamos ?? 0,
       fechaCorte: corte,
     };

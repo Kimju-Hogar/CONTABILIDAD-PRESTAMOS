@@ -409,15 +409,22 @@ export default function AdminPage() {
       {/* ─── Cuenta de papelería y cartones ─────────────────── */}
       <SectionCard titulo="Cuenta general de papelería y cartones" icon={FileText}>
         <StatRow label="Papelería generada" valor={resumen.cuentaPapeleria.papeleria.generada} />
-        <StatRow label="Papelería ya retirada" valor={-resumen.cuentaPapeleria.papeleria.retirada} tono="muted" />
         <StatRow label="Cartones cobrados" sub="Ganancia directa, no se retiran" valor={resumen.cuentaPapeleria.cartones.generados} />
         <Sep />
+        <StatRow label="Acumulado del periodo" valor={resumen.cuentaPapeleria.total.generado} />
+        <StatRow label="Ya retirado" sub="Salió de la caja: es plata tuya fuera del sistema" valor={-resumen.cuentaPapeleria.total.retirado} tono="negativo" />
+        <Sep />
         <StatRow
-          label="Disponible en la cuenta"
+          label="Sin retirar (sigue en la caja)"
           valor={resumen.cuentaPapeleria.total.disponible}
           negrita
           tono="positivo"
         />
+        <p style={{ margin: '8px 0 0', fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          Lo que ya retiraste salió de la caja y es plata tuya fuera del sistema; queda
+          anotado acá y en el libro de caja, pero no se suma al efectivo. Para retirar,
+          entra a <strong>Caja</strong> y toca <strong>&ldquo;Retirar papelería&rdquo;</strong>.
+        </p>
       </SectionCard>
 
       {/* ─── Cartera y mora ─────────────────────────────────── */}

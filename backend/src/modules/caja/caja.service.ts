@@ -173,6 +173,57 @@ export class CajaService {
     return { base: saldo, origen };
   }
 
+  // ─── Cuenta de papelería ────────────────────────────────────
+  /**
+   * Cuánta papelería hay acumulada en la caja y cuánta sigue sin retirar.
+   *
+   * La papelería y el cartón se retienen del desembolso, así que ese efectivo
+   * se queda físicamente en la caja. Cuando el dueño lo retira, el retiro es un
+   * egreso normal: la plata sale de la caja y deja de estar disponible en esta
+   * cuenta, pero el movimiento queda registrado para el reporte.
+   */
+  async papeleriaDisponible(): Promise<{
+    generado: number;
+    retirado: number;
+    disponible: number;
+  }> {
+    const config = await obtenerConfiguracion();
+    const corte = config.fechaCortePapeleria;
+    const corteKey = corte ? keyDia(corte) : null;
+
+    const matchPrestamos: Record<string, unknown> = {
+      deletedAt: null,
+      estado: { $ne: 'cancelado' },
+    };
+    if (corte) matchPrestamos.fechaInicio = { $gte: corte };
+
+    const matchRetiros: Record<string, unknown> = {
+      concepto: 'retiro_papeleria',
+      deletedAt: null,
+    };
+    if (corteKey) matchRetiros.fechaKey = { $gte: corteKey };
+
+    const [generados, retirados] = await Promise.all([
+      PrestamoModel.aggregate([
+        { $match: matchPrestamos },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: { $add: ['$papeleria', { $ifNull: ['$carton', 0] }] } },
+          },
+        },
+      ]),
+      MovimientoCajaModel.aggregate([
+        { $match: matchRetiros },
+        { $group: { _id: null, total: { $sum: '$monto' } } },
+      ]),
+    ]);
+
+    const generado = generados[0]?.total ?? 0;
+    const retirado = retirados[0]?.total ?? 0;
+    return { generado, retirado, disponible: generado - retirado };
+  }
+
   /**
    * La base que de verdad manda para un día.
    *
@@ -240,6 +291,7 @@ export class CajaService {
       .lean();
 
     const totales = await this.calcularTotalesDia(fechaKey);
+    const papeleria = await this.papeleriaDisponible();
     const movimientos = await MovimientoCajaModel.find({ fechaKey })
       .populate('registradoPor', 'nombre')
       .sort({ createdAt: -1 })
@@ -269,6 +321,7 @@ export class CajaService {
         diferencia: caja.diferencia,
         movimientos,
         baseSugerida: null,
+        papeleria,
       };
     }
 
@@ -285,6 +338,7 @@ export class CajaService {
         diferencia: 0,
         movimientos,
         baseSugerida: null,
+        papeleria,
       };
     }
 
@@ -302,6 +356,7 @@ export class CajaService {
       diferencia: 0,
       movimientos,
       baseSugerida: sugerida,
+      papeleria,
     };
   }
 
@@ -535,6 +590,19 @@ export class CajaService {
         400
       );
     }
+    // No se puede retirar más papelería de la que hay acumulada: si se pasara,
+    // el retiro saldría de la plata de prestar y la cuenta quedaría negativa.
+    if (dto.concepto === 'retiro_papeleria') {
+      const { disponible } = await this.papeleriaDisponible();
+      if (dto.monto > disponible) {
+        throw new AppError(
+          `Solo hay ${Math.round(disponible).toLocaleString('es-CO')} de papelería sin retirar. ` +
+            'Si necesitas sacar más plata, regístralo como retiro de utilidad u otro egreso.',
+          400
+        );
+      }
+    }
+
     // Si el día todavía no tiene caja, se abre sola arrastrando lo de ayer
     if (!caja) await this.asegurarCajaAbierta(usuarioId, fechaKey);
 

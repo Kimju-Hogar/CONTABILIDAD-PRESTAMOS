@@ -21,6 +21,7 @@
  *   npm run unificar:caja -- --apply
  *   npm run unificar:caja -- --rebase=2026-10-02          (simulación)
  *   npm run unificar:caja -- --rebase=2026-10-02 --apply
+ *   npm run unificar:caja -- --sin-contado=2026-10-01 --rebase=2026-10-01
  */
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
@@ -30,6 +31,18 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const APLICAR = process.argv.includes('--apply');
 const REBASE = process.argv.find((a) => a.startsWith('--rebase='))?.split('=')[1];
+/**
+ * Días cuyo "efectivo contado" quedó mal escrito y hay que borrar.
+ *
+ * El caso real: el 01/10 cerró esperando -$492.000 y se guardó un contado de
+ * +$492.000, porque el campo del formulario se comía el signo menos. Con ese
+ * dato la cadena arranca en positivo y el faltante nunca se arrastra. Borrarlo
+ * deja el día en "nadie contó" y manda el saldo esperado.
+ */
+const SIN_CONTADO = (process.argv.find((a) => a.startsWith('--sin-contado='))?.split('=')[1] ?? '')
+  .split(',')
+  .map((x) => x.trim())
+  .filter(Boolean);
 const TZ = 'America/Bogota';
 const money = (n: number) => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n || 0)).toLocaleString('es-CO');
 const keyHoy = () => new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date());
@@ -131,9 +144,35 @@ async function main() {
     if (k >= hoy) break;
   }
 
+  // ─── Borrar los "contado" mal escritos ────────────────────
+  if (SIN_CONTADO.length) {
+    console.log(`\n=== Efectivo contado que se borra: ${SIN_CONTADO.join(', ')} ===`);
+    for (const f of SIN_CONTADO) {
+      const c = porFecha.get(f);
+      if (!c) { console.log(` ${f}: no hay caja ese día`); continue; }
+      console.log(` ${f}: contado ${money(c.saldoContado ?? 0)} -> (nadie contó)`);
+      if (APLICAR) {
+        await cajas.updateOne({ _id: c._id }, { $set: { saldoContado: null, diferencia: 0 } });
+        c.saldoContado = null;
+        c.diferencia = 0;
+      } else {
+        // En simulación también se limpia en memoria, para que la cadena de
+        // abajo muestre el resultado real de aplicarlo
+        c.saldoContado = null;
+      }
+    }
+  }
+
   console.log('\n=== Cadena de saldos día por día ===');
   let corriendo = 0;
   const cambios: Array<{ id: unknown; fechaKey: string; antes: number; despues: number }> = [];
+  const congelar: Array<{
+    id: unknown;
+    fechaKey: string;
+    saldoEsperado: number;
+    diferencia: number;
+    totales: Record<string, number>;
+  }> = [];
 
   for (const fechaKey of calendario) {
     const caja = porFecha.get(fechaKey);
@@ -201,7 +240,33 @@ async function main() {
     }
 
     const saldo = base + cobrado + cargos + ing - prestado - gastos - egr;
-    corriendo = saldo;
+
+    // Un día cerrado lleva su snapshot congelado. Si se le mueve la base hay que
+    // volver a congelarlo, o el histórico seguiría mostrando el saldo viejo.
+    if (recalcula && caja && caja.estado === 'cerrado') {
+      const contado = caja.saldoContado;
+      congelar.push({
+        id: caja._id,
+        fechaKey,
+        saldoEsperado: saldo,
+        diferencia: contado == null ? 0 : contado - saldo,
+        totales: {
+          totalCobrado: cobrado,
+          totalPrestado: prestado,
+          cargosCobrados: cargos,
+          totalGastos: gastos,
+          otrosIngresos: ing,
+          otrosEgresos: egr,
+        },
+      });
+    }
+
+    // La cadena sigue con lo que el día dejó de verdad. En un día cerrado manda
+    // el efectivo contado, cuando alguien lo contó.
+    corriendo =
+      caja?.estado === 'cerrado' && caja.saldoContado != null && !recalcula
+        ? caja.saldoContado
+        : saldo;
 
     const marca = !caja
       ? '<- nadie abrió caja, pero salió plata'
@@ -221,11 +286,22 @@ async function main() {
   if (REBASE) {
     console.log(`\n=== Bases a reencadenar desde ${REBASE}: ${cambios.length} ===`);
     for (const k of cambios) console.log(` ${k.fechaKey}  ${money(k.antes)} -> ${money(k.despues)}`);
+    if (congelar.length) {
+      console.log(`\n=== Cierres ya guardados que hay que volver a congelar: ${congelar.length} ===`);
+      for (const k of congelar) console.log(` ${k.fechaKey}  esperado -> ${money(k.saldoEsperado)}`);
+    }
     if (APLICAR && cambios.length) {
       for (const k of cambios) {
         await cajas.updateOne({ _id: k.id as never }, { $set: { baseInicial: k.despues } });
       }
       console.log(`\nBases actualizadas: ${cambios.length}`);
+      for (const k of congelar) {
+        await cajas.updateOne(
+          { _id: k.id as never },
+          { $set: { ...k.totales, saldoEsperado: k.saldoEsperado, diferencia: k.diferencia } }
+        );
+      }
+      if (congelar.length) console.log(`Cierres recongelados: ${congelar.length}`);
     }
   } else {
     console.log('\n(Para reencadenar las bases: --rebase=YYYY-MM-DD)');
